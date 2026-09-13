@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f7f4ed" />
+    <meta name="description" content="哥伦比娅主题的轻量小游戏合集。" />
+    <title>哥伦比娅的梦境游廊</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script>
+      if (window.location.protocol === 'file:') {
+        document.getElementById('app').innerHTML = `
+          <main style="min-height:100vh;display:grid;place-items:center;padding:24px;background:#f7f4ed;color:#171717;font-family:system-ui,sans-serif">
+            <section style="max-width:520px;border:2px solid #171717;padding:32px;box-shadow:7px 7px 0 #171717;background:#fff">
+              <h1 style="margin:0 0 14px;font-size:28px">请使用本地服务器打开</h1>
+              <p style="margin:0;line-height:1.8">Vue + Vite 项目不能直接双击 index.html 运行。请返回项目目录，双击“启动本地预览.bat”，页面会自动在浏览器中打开。</p>
+            </section>
+          </main>
+        `
+      }
+    </script>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

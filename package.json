@@ -1,0 +1,19 @@
+{
+  "name": "columbina-birthday",
+  "private": true,
+  "version": "2.0.0",
+  "type": "module",
+  "description": "新月再梦听羽生 · 哥伦比娅生日企划宣传站（Vue 3 + Vite 重构版）",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "vue": "^3.5.13"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.2.1",
+    "vite": "^6.0.7"
+  }
+}

@@ -1,0 +1,65 @@
+/* ============================================================
+   新月再梦听羽生 · 全局公共样式（由原 index.html 原样迁移）
+   仅包含：变量、reset、背景层、通用区块工具类
+   ============================================================ */
+:root{
+  --bg:#05070f;
+  --bg-2:#0a0f1e;
+  --ink:#e8ecf4;
+  --ink-dim:#9aa4bd;
+  --ink-faint:#5c6680;
+  --moon:#f2f4fa;
+  --blue:#9db8e8;
+  --blue-deep:#4a6aa8;
+  --gold:#e6c88a;
+  --line:rgba(157,184,232,.14);
+  --serif:'LXGW WenKai','Noto Serif SC',serif;
+  --sans:'Noto Sans SC',-apple-system,'Microsoft YaHei',sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  background:var(--bg);
+  color:var(--ink);
+  font-family:var(--sans);
+  font-weight:300;
+  overflow-x:hidden;
+  line-height:1.7;
+}
+::selection{background:rgba(157,184,232,.3);color:#fff}
+
+/* ---------- 背景层 ---------- */
+#sky{position:fixed;inset:0;z-index:0;pointer-events:none}
+.grain{
+  position:fixed;inset:0;z-index:1;pointer-events:none;opacity:.5;
+  background-image:radial-gradient(rgba(255,255,255,.025) 1px,transparent 1px);
+  background-size:3px 3px;
+}
+.vignette{
+  position:fixed;inset:0;z-index:1;pointer-events:none;
+  background:radial-gradient(ellipse at 50% 20%,transparent 40%,rgba(3,5,12,.75) 100%);
+}
+
+/* ---------- 通用 ---------- */
+.wrap{position:relative;z-index:2;max-width:1080px;margin:0 auto;padding:0 32px}
+section{position:relative;padding:96px 0}
+.reveal{opacity:0;transform:translateY(28px);transition:opacity 1s cubic-bezier(.2,.6,.2,1),transform 1s cubic-bezier(.2,.6,.2,1)}
+.reveal.in{opacity:1;transform:none}
+.eyebrow{
+  font-size:13px;letter-spacing:.42em;color:var(--blue);text-transform:uppercase;
+  display:flex;align-items:center;gap:14px;margin-bottom:22px;
+}
+.eyebrow::before{content:"";width:38px;height:1px;background:linear-gradient(90deg,transparent,var(--blue));}
+h1,h2,h3{font-family:var(--serif);font-weight:400}
+h2{font-size:clamp(30px,4.6vw,46px);letter-spacing:.08em;margin-bottom:20px}
+h2 .dot{color:var(--gold)}
+.lead{color:var(--ink-dim);font-size:16px;max-width:620px;margin-bottom:36px}
+hr.orn{
+  border:none;height:1px;margin:0 auto 26px;width:120px;
+  background:linear-gradient(90deg,transparent,var(--blue-deep),transparent);
+}
+
+/* ---------- 响应式（公共部分） ---------- */
+@media(max-width:860px){
+  section{padding:72px 0}
+}
