@@ -399,7 +399,23 @@ onBeforeUnmount(() => {
         </header>
 
         <section class="hero" :style="{ '--hero-image': `url(${eventHero})` }">
-          <video class="hero-video" autoplay muted loop playsinline preload="metadata" aria-hidden="true">
+          <img class="hero-fallback" :src="eventHero" fetchpriority="high" alt="" aria-hidden="true" />
+          <video
+            class="hero-video"
+            autoplay
+            muted
+            loop
+            playsinline
+            webkit-playsinline
+            x5-playsinline
+            t7-video-player-type="inline"
+            x5-video-player-type="h5-page"
+            disablepictureinpicture
+            disableremoteplayback
+            controlslist="nodownload nofullscreen noremoteplayback"
+            preload="metadata"
+            aria-hidden="true"
+          >
             <source :src="heroMotion" type="video/mp4" />
           </video>
           <div class="hero-glow"></div>
@@ -427,7 +443,15 @@ onBeforeUnmount(() => {
               @keydown.enter="openGame"
               @keydown.space.prevent="openGame"
             >
-              <div class="card-art game-cover" :style="{ backgroundImage: `url(${stageOne})` }">
+              <div
+                class="card-art game-cover"
+                :style="{
+                  backgroundImage: `url('${stageOne}')`,
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center',
+                  backgroundRepeat: 'no-repeat',
+                }"
+              >
                 <span class="cover-vignette"></span>
                 <img class="cover-character flight-cover-character" :src="characterJump" alt="飞行中的哥伦比娅" />
                 <span class="play-orbit"><span>01</span><b>进入</b></span>
@@ -452,7 +476,15 @@ onBeforeUnmount(() => {
               @keydown.enter="openRunner"
               @keydown.space.prevent="openRunner"
             >
-              <div class="card-art runner-card-art game-cover" :style="{ backgroundImage: `url(${stageThree})` }">
+              <div
+                class="card-art runner-card-art game-cover"
+                :style="{
+                  backgroundImage: `url('${stageThree}')`,
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center',
+                  backgroundRepeat: 'no-repeat',
+                }"
+              >
                 <span class="cover-vignette"></span>
                 <img
                   class="cover-character runner-cover-character"
@@ -482,7 +514,7 @@ onBeforeUnmount(() => {
               @keydown.enter="openBoard('tictactoe')"
               @keydown.space.prevent="openBoard('tictactoe')"
             >
-              <div class="card-art board-card-art game-cover" :style="{ backgroundImage: `linear-gradient(rgba(6, 13, 48, .22), rgba(6, 13, 48, .54)), url(${boardBackground})` }">
+              <div class="card-art board-card-art game-cover" :style="{ backgroundImage: `linear-gradient(rgba(6, 13, 48, .22), rgba(6, 13, 48, .54)), url('${boardBackground}')` }">
                 <span class="board-halo"></span>
                 <img class="board-cover" :src="ticTacToeBoard" alt="月亮棋棋盘" />
                 <span class="play-orbit"><span>03</span><b>进入</b></span>
@@ -501,7 +533,7 @@ onBeforeUnmount(() => {
               @keydown.enter="openBoard('gomoku')"
               @keydown.space.prevent="openBoard('gomoku')"
             >
-              <div class="card-art board-card-art game-cover" :style="{ backgroundImage: `linear-gradient(rgba(6, 13, 48, .22), rgba(6, 13, 48, .54)), url(${boardBackground})` }">
+              <div class="card-art board-card-art game-cover" :style="{ backgroundImage: `linear-gradient(rgba(6, 13, 48, .22), rgba(6, 13, 48, .54)), url('${boardBackground}')` }">
                 <span class="board-halo"></span>
                 <img class="board-cover" :src="gomokuBoard" alt="星月五子棋棋盘" />
                 <span class="play-orbit"><span>04</span><b>进入</b></span>
@@ -546,7 +578,7 @@ onBeforeUnmount(() => {
             @pointerdown="handleStagePress"
           >
             <Transition name="background-fade" mode="out-in">
-              <div :key="currentStageBackground" class="flight-background" :style="{ backgroundImage: `linear-gradient(rgba(6, 12, 42, .08), rgba(7, 12, 40, .25)), url(${currentStageBackground})` }"></div>
+              <div :key="currentStageBackground" class="flight-background" :style="{ backgroundImage: `linear-gradient(rgba(6, 12, 42, .08), rgba(7, 12, 40, .25)), url('${currentStageBackground}')` }"></div>
             </Transition>
             <div class="score-display">
               <strong>{{ String(score).padStart(2, '0') }}</strong>
@@ -559,14 +591,14 @@ onBeforeUnmount(() => {
               class="obstacle-pair"
               :style="{ width: `${obstacle.width}px`, transform: `translateX(${obstacle.x}px)` }"
             >
-              <div class="obstacle top" :style="{ height: `${obstacle.gapTop}px`, width: `${obstacle.width}px`, backgroundImage: `url(${moonObstacle})` }"></div>
+              <div class="obstacle top" :style="{ height: `${obstacle.gapTop}px`, width: `${obstacle.width}px`, backgroundImage: `url('${moonObstacle}')` }"></div>
               <div
                 class="obstacle bottom"
                 :style="{
                   top: `${obstacle.gapTop + obstacle.gapHeight}px`,
                   bottom: '0',
                   width: `${obstacle.width}px`,
-                  backgroundImage: `url(${moonObstacle})`,
+                  backgroundImage: `url('${moonObstacle}')`,
                 }"
               ></div>
             </div>

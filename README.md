@@ -66,25 +66,25 @@ columbina-birthday/
 
 ## 修改指南
 
-| 要改的内容 | 去哪里改 |
-| --- | --- |
-| 大标题「新月再梦听羽生」、副标题、装饰语 | `HeroSection.vue` |
-| 企划介绍、角色档案卡 | `IntroSection.vue` |
-| 产出预告卡片 | `WorksSection.vue` |
-| 「一起玩游戏」入口模块 | `GameSection.vue`（按钮指向 `./game/index.html`，游戏文件在 `public/game/`） |
-| 时间线 | `TimelineSection.vue` |
-| 参与区文案、按钮 | `CtaSection.vue` |
-| 页脚声明 | `SiteFooter.vue` |
-| **弹窗 QQ 群号** | `JoinModal.vue` 里的 `qq` ref（当前 `'1087063966'`），「复制 QQ 号」按钮自动跟随新号码 |
-| 倒计时目标日期 | `src/composables/useCountdown.js` 里的 `TARGET`（当前 2027-01-14 零点） |
-| 背景音乐文件 | 覆盖 `public/audio/nod-krai.mp3` 即可（建议 MP3/AAC，**别用 Ogg——Safari 不支持**） |
-| 背景音乐音量 | `src/components/AudioToggle.vue` 里的 `VOLUME`（当前 0.5） |
-| 背景音乐何时开始播放 | `AudioToggle.vue`：进站不主动播放；页面**下滑**（超过 6px）或首次点击/按键后才开始，一直不动则保持安静 |
-| 标题贴人物位置 | `HeroSection.vue` 里的 `NECK`（基于 4096×2304 原图的归一化坐标，当前 x: 0.5151, y: 0.44） |
-| 换背景图 | 覆盖 `src/assets/hero_4k.png` 即可；**换了尺寸记得同步改 `HeroSection.vue` 的 `ORIG_W / ORIG_H`** |
-| 配色 / 字体 | `src/styles/base.css` 的 `:root` 变量（--bg / --blue / --gold / --serif 等） |
-| 粒子数量 / 星星数量 | `SkyCanvas.vue`（霜粒 46 个、星星 80 个） |
-| 区块增删 | 在 `App.vue` 增删组件引用；新区块记得加 `class="reveal"` 才能有滚动浮现动画 |
+| 要改的内容                | 去哪里改                                                                               |
+| -------------------- | ---------------------------------------------------------------------------------- |
+| 大标题「新月再梦听羽生」、副标题、装饰语 | `HeroSection.vue`                                                                  |
+| 企划介绍、角色档案卡           | `IntroSection.vue`                                                                 |
+| 产出预告卡片               | `WorksSection.vue`                                                                 |
+| 「一起玩游戏」入口模块          | `GameSection.vue`（按钮指向 `./game/index.html`，游戏文件在 `public/game/`）                   |
+| 时间线                  | `TimelineSection.vue`                                                              |
+| 参与区文案、按钮             | `CtaSection.vue`                                                                   |
+| 页脚声明                 | `SiteFooter.vue`                                                                   |
+| **弹窗 QQ 群号**         | `JoinModal.vue` 里的 `qq` ref（当前 `'1087063966'`），「复制 QQ 号」按钮自动跟随新号码                  |
+| 倒计时目标日期              | `src/composables/useCountdown.js` 里的 `TARGET`（当前 2027-01-14 零点）                    |
+| 背景音乐文件               | 覆盖 `public/audio/nod-krai.mp3` 即可（建议 MP3/AAC，**别用 Ogg——Safari 不支持**）               |
+| 背景音乐音量               | `src/components/AudioToggle.vue` 里的 `VOLUME`（当前 0.5）                               |
+| 背景音乐何时开始播放           | `AudioToggle.vue`：进站不主动播放；页面**下滑**（超过 6px）或首次点击/按键后才开始，一直不动则保持安静                   |
+| 标题贴人物位置              | `HeroSection.vue` 里的 `NECK`（基于 4096×2304 原图的归一化坐标，当前 x: 0.5151, y: 0.44）           |
+| 换背景图                 | 覆盖 `src/assets/hero_4k.png` 即可；**换了尺寸记得同步改 `HeroSection.vue` 的 `ORIG_W / ORIG_H`** |
+| 配色 / 字体              | `src/styles/base.css` 的 `:root` 变量（--bg / --blue / --gold / --serif 等）             |
+| 粒子数量 / 星星数量          | `SkyCanvas.vue`（霜粒 46 个、星星 80 个）                                                   |
+| 区块增删                 | 在 `App.vue` 增删组件引用；新区块记得加 `class="reveal"` 才能有滚动浮现动画                               |
 
 ---
 
@@ -126,22 +126,22 @@ Copy-Item .\dist\* ..\public\game -Recurse
 
 - 背景图来源：米游社官方壁纸合集《挪德卡莱新角色「月夜的叙事诗」》（4096×2304 PNG，官方发布）
 - 角色设定：原神角色，哥伦比娅·希珀塞莱尼娅
-- 背景音乐：《挪德卡莱 Nod-Krai》（HOYO-MiX & AURORA），站点使用转码后的 128 kbps MP3 版本；版权归米哈游所有
+- 背景音乐：《挪德卡莱 Nod-Krai》（HOYO-MiX & AURORA），《如生之不竭 Life Is Inexhaustible》，《黄金城的祷颂 Kathisma Chrysopoleos》，《黑雪鹄的夜梦 Dream of the Black Snow Swan》，《新月的摇篮曲（其一）：伴月同眠 Lullaby of the New Moon (I): Somnias a Luna》，《暮月雨时 Of Longing Rain and Moon》 （HOYO-MiX），站点使用转码后的 128 kbps MP3 版本；版权归米哈游所有
 - 本企划为粉丝自发组织，非官方，不得用于商业用途；原神及角色版权归米哈游所有
 
 ---
 
 ## 常见问题
 
-| 问题 | 解决 |
-| --- | --- |
-| 页面打开是空白/黑屏 | 确认已执行 `npm install`；开发用 `npm run dev` 访问 5173，生产用 `npm run build` 产物 |
-| npm install 报错 | 确认 Node ≥ 18；可删除 `node_modules` 和 `package-lock.json` 后重装 |
-| 端口被占用 | `npm run dev -- --port 5174`，或 `npm run preview -- --port 4174` |
-| 打开后背景是黑的 | 确认 `src/assets/hero_4k.png` 存在 |
-| 标题不在人物上 | 确认背景图未换；换过的话检查 `ORIG_W / ORIG_H` 是否等于新图尺寸 |
-| 字体样式变了 | 离线导致的字体 CDN 降级，联网刷新即可恢复 |
-| 倒计时不准 | 检查系统时区是否为 GMT+8；`TARGET` 为东八区时间 |
-| 点了「一起玩游戏」白屏 / 404 | 确认 `public/game/` 存在并已重新 `npm run build`（产物应在 `dist/game/`） |
+| 问题                | 解决                                                                   |
+| ----------------- | -------------------------------------------------------------------- |
+| 页面打开是空白/黑屏        | 确认已执行 `npm install`；开发用 `npm run dev` 访问 5173，生产用 `npm run build` 产物 |
+| npm install 报错    | 确认 Node ≥ 18；可删除 `node_modules` 和 `package-lock.json` 后重装            |
+| 端口被占用             | `npm run dev -- --port 5174`，或 `npm run preview -- --port 4174`      |
+| 打开后背景是黑的          | 确认 `src/assets/hero_4k.png` 存在                                       |
+| 标题不在人物上           | 确认背景图未换；换过的话检查 `ORIG_W / ORIG_H` 是否等于新图尺寸                            |
+| 字体样式变了            | 离线导致的字体 CDN 降级，联网刷新即可恢复                                              |
+| 倒计时不准             | 检查系统时区是否为 GMT+8；`TARGET` 为东八区时间                                      |
+| 点了「一起玩游戏」白屏 / 404 | 确认 `public/game/` 存在并已重新 `npm run build`（产物应在 `dist/game/`）          |
 
 ---
