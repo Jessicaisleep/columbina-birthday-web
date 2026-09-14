@@ -405,6 +405,7 @@ onBeforeUnmount(() => {
             autoplay
             muted
             loop
+            :poster="eventHero"
             playsinline
             webkit-playsinline
             x5-playsinline

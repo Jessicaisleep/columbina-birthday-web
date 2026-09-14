@@ -6,7 +6,8 @@
   "description": "新月再梦听羽生 · 哥伦比娅生日企划宣传站（Vue 3 + Vite 重构版）",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build:game": "npm --prefix columbina-game run build && node scripts/sync-game-dist.mjs",
+    "build": "npm run build:game && vite build",
     "preview": "vite preview"
   },
   "dependencies": {
