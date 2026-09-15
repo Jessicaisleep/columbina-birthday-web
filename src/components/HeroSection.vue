@@ -5,7 +5,6 @@
         <h1 class="title" ref="titleRef">
           <img class="title-logo" :src="heroLogo" alt="新月再梦听羽生 · 哥伦比娅生日会" draggable="false" />
         </h1>
-        <p class="sub">哥伦比娅 · 生日企划</p>
         <div class="flourish">愿此月夜，献予哥伦比娅</div>
       </div>
     </div>
@@ -114,16 +113,13 @@ onBeforeUnmount(() => {
   filter:drop-shadow(0 6px 24px rgba(5,7,15,.9));
   -webkit-user-drag:none;user-select:none;
 }
-.hero .sub{
-  margin-top:8px;font-size:clamp(11px,1.4vw,15px);letter-spacing:.5em;color:#e6ebf7;
-  text-shadow:0 2px 10px rgba(5,7,15,.9);
-}
 .hero .flourish{
-  margin:14px 0 0;display:flex;align-items:center;justify-content:center;gap:14px;color:#b9c4dc;
-  text-shadow:0 2px 8px rgba(5,7,15,.9);font-size:13px;
+  margin:16px 0 0;display:flex;align-items:center;justify-content:center;gap:14px;
+  color:#f4f7ff;font-size:14px;font-weight:600;letter-spacing:.14em;
+  text-shadow:0 2px 12px rgba(5,7,15,.95),0 0 20px rgba(205,222,255,.38);
 }
-.hero .flourish::before,.hero .flourish::after{content:"";width:46px;height:1px;background:linear-gradient(90deg,transparent,#b9c4dc)}
-.hero .flourish::after{background:linear-gradient(90deg,#b9c4dc,transparent)}
+.hero .flourish::before,.hero .flourish::after{content:"";width:46px;height:1px;background:linear-gradient(90deg,transparent,#e2eafc)}
+.hero .flourish::after{background:linear-gradient(90deg,#e2eafc,transparent)}
 @keyframes rise{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:none}}
 /* 倒计时 */
 .countdown{
