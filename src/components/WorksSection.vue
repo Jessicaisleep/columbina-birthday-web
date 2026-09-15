@@ -57,7 +57,7 @@
 @media(max-width:1024px){
   .works{grid-template-columns:repeat(2,1fr)}
 }
-@media(max-width:860px){
+@media(max-width:860px) and (orientation:portrait){
   .works{grid-template-columns:1fr}
 }
 </style>

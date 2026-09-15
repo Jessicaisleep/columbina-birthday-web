@@ -13,6 +13,7 @@
   <SiteFooter />
 
   <JoinModal :open="joinOpen" @close="joinOpen = false" />
+  <LandscapeGate />
 </template>
 
 <script setup>
@@ -27,6 +28,7 @@ import TimelineSection from './components/TimelineSection.vue'
 import CtaSection from './components/CtaSection.vue'
 import SiteFooter from './components/SiteFooter.vue'
 import JoinModal from './components/JoinModal.vue'
+import LandscapeGate from './components/LandscapeGate.vue'
 
 const joinOpen = ref(false)
 

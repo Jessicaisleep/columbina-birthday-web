@@ -70,7 +70,7 @@
 @keyframes spin{to{transform:rotate(360deg)}}
 
 /* ---------- 响应式（Play 部分） ---------- */
-@media(max-width:860px){
+@media(max-width:860px) and (orientation:portrait){
   .play{grid-template-columns:1fr;padding:40px 26px;gap:26px}
   .play-art{display:none}
   .play-btn{padding:14px 28px;font-size:15px}
