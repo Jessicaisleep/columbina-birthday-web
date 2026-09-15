@@ -16,29 +16,92 @@
       </template>
       <path v-else class="slash" d="M14.5 8.7 20.7 15.3" />
     </svg>
-    <audio
-      ref="audioRef"
-      src="./audio/nod-krai.mp3"
-      loop
-      preload="none"
-    ></audio>
   </button>
 </template>
 
 <script setup>
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 
-const audioRef = ref(null)
-/* 默认开启：图标进站即显示「播放中」 */
-const playing = ref(true)
+/* 用 Web Audio + .bin 资源播放：
+   1) 页面上没有 <audio> 元素；
+   2) 资源不是 audio/mpeg（octet-stream + .bin），
+   两者一起避开国产浏览器（夸克 / QQ / UC 等）的媒体嗅探。 */
+const BGM_URL = './audio/nod-krai.bin'
 const VOLUME = 0.5
 
-/* 进站不主动播放：页面下滑（或首次点击/按键）后才开始；一直不动就保持安静 */
+/* 默认开启：图标进站即显示「播放中」 */
+const playing = ref(true)
+
+let ctx = null
+let rawBuffer = null
+let decoded = null
+let source = null
+let gainNode = null
+let loading = null
+let hiddenPause = false
+
+/* 进站不主动播放：页面下滑（或首次触摸/点击/按键）后才开始；一直不动就保持安静 */
 const SCROLL_TRIGGERS = ['scroll', 'wheel', 'touchmove']
-const ACTION_TRIGGERS = ['pointerdown', 'keydown']
+const ACTION_TRIGGERS = ['pointerdown', 'touchstart', 'keydown']
 const SCROLLED_PX = 6
 
 let armed = false
+
+function getCtx() {
+  if (typeof window === 'undefined') return null
+  const AC = window.AudioContext || window.webkitAudioContext
+  if (!AC) return null
+  if (!ctx) ctx = new AC()
+  if (ctx.state === 'suspended') ctx.resume().catch(() => {})
+  return ctx
+}
+
+function loadBuffer() {
+  if (decoded) return Promise.resolve(decoded)
+  if (loading) return loading
+  const c = getCtx()
+  if (!c) return Promise.resolve(null)
+  loading = fetch(BGM_URL)
+    .then((res) => res.arrayBuffer())
+    .then((buf) => {
+      rawBuffer = buf
+      return c.decodeAudioData(buf.slice(0))
+    })
+    .then((b) => { decoded = b; return b })
+    .catch(() => { loading = null; return null })
+  return loading
+}
+
+function stopAudio() {
+  if (source) {
+    try { source.stop() } catch { /* 已停止 */ }
+    try { source.disconnect() } catch { /* ignore */ }
+    source = null
+  }
+  if (gainNode) {
+    try { gainNode.disconnect() } catch { /* ignore */ }
+    gainNode = null
+  }
+}
+
+function attemptPlay() {
+  if (!playing.value || source) return
+  const c = getCtx()
+  if (!c) return
+  loadBuffer().then((buffer) => {
+    if (!buffer || !playing.value || source) return
+    const g = c.createGain()
+    g.gain.value = VOLUME
+    const node = c.createBufferSource()
+    node.buffer = buffer
+    node.loop = true
+    node.connect(g).connect(c.destination)
+    node.start(0)
+    source = node
+    gainNode = g
+    stopStartWatch()
+  })
+}
 
 function onScrollTrigger() {
   if (window.scrollY > SCROLLED_PX || document.documentElement.scrollTop > SCROLLED_PX) attemptPlay()
@@ -63,50 +126,56 @@ function stopStartWatch() {
   ACTION_TRIGGERS.forEach((type) => document.removeEventListener(type, onActionTrigger))
 }
 
-function attemptPlay() {
-  const el = audioRef.value
-  if (!el || !playing.value || !el.paused) return
-  el.volume = VOLUME
-  const promise = el.play()
-  if (promise && typeof promise.then === 'function') {
-    promise.then(stopStartWatch).catch(() => { /* 还没拿到播放许可，继续等下一次交互 */ })
-  }
-}
-
 function toggle() {
-  const el = audioRef.value
-  if (!el) return
   if (playing.value) {
     playing.value = false
     stopStartWatch()
-    el.pause()
+    stopAudio()
   } else {
     playing.value = true
     attemptPlay()
   }
 }
 
-/* 离开页面先暂停：避免主站 BGM 与游戏音乐叠在一起响（手机 bfcache 尤为明显） */
-function onPageHide() {
-  const el = audioRef.value
-  if (el && !el.paused) el.pause()
+/* 切到后台（切 App / 切标签）：先停声，回来再续播 */
+function onVisibility() {
+  if (document.hidden) {
+    hiddenPause = true
+    stopAudio()
+  } else if (hiddenPause) {
+    hiddenPause = false
+    if (playing.value) attemptPlay()
+  }
 }
 
-/* 用前进/后退回到本页时，若本来在播就接着播 */
+/* 离开本页（去游戏页 / 关闭）：立刻停声 */
+function onPageHide() {
+  hiddenPause = false
+  stopAudio()
+}
+
+/* 从别的页面返回：保持安静，图标同步为「已关闭」，想听再点一下 */
 function onPageShow(event) {
-  if (event && event.persisted && playing.value) attemptPlay()
+  if (!event || !event.persisted) return
+  hiddenPause = false
+  playing.value = false
+  stopStartWatch()
+  stopAudio()
 }
 
 onMounted(() => {
   armStartWatch()
   window.addEventListener('pagehide', onPageHide)
   window.addEventListener('pageshow', onPageShow)
+  document.addEventListener('visibilitychange', onVisibility)
 })
 
 onBeforeUnmount(() => {
   stopStartWatch()
+  stopAudio()
   window.removeEventListener('pagehide', onPageHide)
   window.removeEventListener('pageshow', onPageShow)
+  document.removeEventListener('visibilitychange', onVisibility)
 })
 </script>
 
