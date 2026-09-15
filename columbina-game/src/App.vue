@@ -398,7 +398,7 @@ onBeforeUnmount(() => {
           <span class="edition">COLUMBINA BIRTHDAY · 2027</span>
         </header>
 
-        <section class="hero" :style="{ '--hero-image': `url(${eventHero})` }">
+        <section class="hero" :style="{ '--hero-image': `url('${eventHero}')` }">
           <img class="hero-fallback" :src="eventHero" fetchpriority="high" alt="" aria-hidden="true" />
           <video
             class="hero-video"
