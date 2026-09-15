@@ -529,7 +529,7 @@ onBeforeUnmount(() => {
         aria-label="哥伦比娅无尽巡游游戏区域"
         @pointerdown="handleAction"
       >
-        <Transition name="background-fade" mode="out-in"><div :key="currentStageBackground" class="runner-background" :style="{ backgroundImage: `linear-gradient(180deg, rgba(7, 15, 53, .30), rgba(10, 17, 62, .58)), url(${currentStageBackground})` }"></div></Transition>
+        <Transition name="background-fade" mode="out-in"><div :key="currentStageBackground" class="runner-background" :style="{ backgroundImage: `linear-gradient(180deg, rgba(7, 15, 53, .30), rgba(10, 17, 62, .58)), url('${currentStageBackground}')` }"></div></Transition>
 
         <div class="runner-hud">
           <div class="runner-score"><small>DREAM {{ Math.floor(score / 10) + 1 }} · SCORE</small><strong>{{ String(score).padStart(2, '0') }}</strong></div>

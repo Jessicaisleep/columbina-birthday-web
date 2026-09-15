@@ -164,7 +164,7 @@ onBeforeUnmount(() => { requestId += 1; aiAbortController?.abort() })
   <section
     class="board-page"
     :class="isTicTacToe ? 'ttt-page' : 'gomoku-page'"
-    :style="{ backgroundImage: `linear-gradient(180deg, rgba(5, 12, 48, .48), rgba(5, 12, 48, .78)), url(${boardBackground})` }"
+    :style="{ backgroundImage: `linear-gradient(180deg, rgba(5, 12, 48, .48), rgba(5, 12, 48, .78)), url('${boardBackground}')` }"
   >
     <header class="board-topbar">
       <button class="board-back" type="button" aria-label="返回小游戏大厅" @click="leave">← 返回大厅</button>
@@ -189,7 +189,7 @@ onBeforeUnmount(() => { requestId += 1; aiAbortController?.abort() })
         </div>
 
         <div class="board-wrap">
-          <div class="game-board" :class="isTicTacToe ? 'ttt-board' : 'gomoku-board'" :style="{ '--board-size': size, backgroundImage: `url(${boardImage})` }" role="grid" :aria-label="`${title}棋盘`">
+          <div class="game-board" :class="isTicTacToe ? 'ttt-board' : 'gomoku-board'" :style="{ '--board-size': size, backgroundImage: `url('${boardImage}')` }" role="grid" :aria-label="`${title}棋盘`">
             <button
               v-for="(_, index) in size * size"
               :key="index"
