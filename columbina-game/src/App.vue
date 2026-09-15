@@ -7,6 +7,7 @@ import boardPieceAi from '../p/board-piece-columbina-pink.png'
 import eventHero from '../p/event/hero.jpg'
 import eventLogo from '../p/event/logo.webp'
 import heroMotion from '../p/event/hero-motion.mp4'
+import heroMotionImg from '../p/event/hero-motion.webp'
 import moonObstacle from '../p/event/moon-obstacle.webp'
 import boardBackground from '../p/event/board-background.webp'
 import brandIcon from '../p/event/brand-icon.png'
@@ -450,7 +451,7 @@ onBeforeUnmount(() => {
         </header>
 
         <section class="hero" :style="{ '--hero-image': `url('${eventHero}')` }">
-          <img class="hero-fallback" :src="eventHero" fetchpriority="high" alt="" aria-hidden="true" />
+          <img class="hero-fallback" :src="showMotion ? eventHero : heroMotionImg" fetchpriority="high" alt="" aria-hidden="true" />
           <video
             v-if="showMotion"
             class="hero-video"
