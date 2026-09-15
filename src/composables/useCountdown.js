@@ -1,7 +1,7 @@
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 
-/* 默认倒计时：2027-01-14 00:00 GMT+8 */
-const TARGET = new Date('2027-01-14T00:00:00+08:00')
+/* 默认倒计时：2027-01-14 20:00 GMT+8 */
+const TARGET = new Date('2027-01-14T20:00:00+08:00')
 
 function pad(n){ return String(n).padStart(2, '0') }
 
