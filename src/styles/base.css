@@ -60,6 +60,7 @@ hr.orn{
 }
 
 /* ---------- 响应式（公共部分） ---------- */
-@media(max-width:860px){
+/* 手机竖屏才用紧凑样式；横屏保持电脑端布局 */
+@media(max-width:860px) and (orientation:portrait){
   section{padding:72px 0}
 }

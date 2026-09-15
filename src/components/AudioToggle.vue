@@ -86,8 +86,28 @@ function toggle() {
   }
 }
 
-onMounted(armStartWatch)
-onBeforeUnmount(stopStartWatch)
+/* 离开页面先暂停：避免主站 BGM 与游戏音乐叠在一起响（手机 bfcache 尤为明显） */
+function onPageHide() {
+  const el = audioRef.value
+  if (el && !el.paused) el.pause()
+}
+
+/* 用前进/后退回到本页时，若本来在播就接着播 */
+function onPageShow(event) {
+  if (event && event.persisted && playing.value) attemptPlay()
+}
+
+onMounted(() => {
+  armStartWatch()
+  window.addEventListener('pagehide', onPageHide)
+  window.addEventListener('pageshow', onPageShow)
+})
+
+onBeforeUnmount(() => {
+  stopStartWatch()
+  window.removeEventListener('pagehide', onPageHide)
+  window.removeEventListener('pageshow', onPageShow)
+})
 </script>
 
 <style scoped>

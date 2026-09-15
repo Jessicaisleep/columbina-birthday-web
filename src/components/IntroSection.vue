@@ -53,7 +53,7 @@
 .card li::before{content:"❋";color:var(--gold);font-size:11px;flex:none;transform:translateY(1px)}
 
 /* ---------- 响应式（Intro 部分） ---------- */
-@media(max-width:860px){
+@media(max-width:860px) and (orientation:portrait){
   .intro .cols{grid-template-columns:1fr;gap:36px}
 }
 </style>

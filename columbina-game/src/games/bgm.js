@@ -43,3 +43,23 @@ export async function setBgm(source) {
     current = { node, gain }
   } catch {}
 }
+
+/* 立即停止当前 BGM（离开页面时调用，防止 Web Audio 在 bfcache 里继续发声） */
+export function stopBgm() {
+  requestId += 1
+  activeSource = ''
+  if (!current) return
+  try { current.node.stop() } catch {}
+  try { current.node.disconnect() } catch {}
+  try { current.gain.disconnect() } catch {}
+  current = undefined
+}
+
+/* 挂起 / 恢复 AudioContext */
+export function suspendBgm() {
+  if (audioContext && audioContext.state === 'running') audioContext.suspend().catch(() => {})
+}
+
+export function resumeBgm() {
+  if (audioContext && audioContext.state === 'suspended') audioContext.resume().catch(() => {})
+}

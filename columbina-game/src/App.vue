@@ -25,7 +25,7 @@ import characterRun from '../p/columbina-run-transparent.webp'
 import ticTacToeWorkerUrl from './games/ticTacToe.worker.js?worker&url'
 import gomokuWorkerUrl from './games/gomoku.worker.js?worker&url'
 import { playSfx } from './games/sound.js'
-import { setBgm } from './games/bgm.js'
+import { resumeBgm, setBgm, stopBgm, suspendBgm } from './games/bgm.js'
 import { loadAssetGroup } from './games/resourceLoader.js'
 import RunnerGame from './components/RunnerGame.vue'
 import BoardGame from './components/BoardGame.vue'
@@ -59,7 +59,13 @@ const assetGroups = {
 }
 const backgroundPreloadOrder = ['flightCore', 'runnerCore', 'tictactoeCore', 'gomokuCore', 'stageTwo', 'stageThree', 'stageFour']
 const currentStageBackground = computed(() => stageBackgrounds[Math.floor(score.value / 10) % stageBackgrounds.length])
-watch([screen, () => Math.floor(score.value / 10)], ([view, index]) => { if (view === 'lobby') setBgm(lobbyMusic); else if (view === 'game') setBgm(stageMusic[index % 4]); else if (view === 'board') setBgm(stageMusicThree) }, { immediate: true })
+function applyBgm() {
+  const index = Math.floor(score.value / 10)
+  if (screen.value === 'lobby') setBgm(lobbyMusic)
+  else if (screen.value === 'game') setBgm(stageMusic[index % 4])
+  else if (screen.value === 'board') setBgm(stageMusicThree)
+}
+watch([screen, () => Math.floor(score.value / 10)], applyBgm, { immediate: true })
 function preloadStage(index) { const image = new Image(); image.src = stageBackgrounds[index % stageBackgrounds.length] }
 watch(score, (value) => { if (value > 0 && value % 10 === 9) preloadStage(Math.floor(value / 10) + 1) })
 let velocity = 0
@@ -363,10 +369,27 @@ function handleResize() {
   if (screen.value === 'game' && gameStatus.value !== 'playing') resetGame()
 }
 
+/* 离开页面立刻停声：手机浏览器会把页面放进 bfcache，
+   Web Audio 的 AudioContext 不会自己停，返回主站后音乐还在响 */
+function handleLeavePage() {
+  stopBgm()
+  suspendBgm()
+}
+
+/* 用前进/后退回到本页时，恢复声音 */
+function handleReturnPage(event) {
+  if (!event || !event.persisted) return
+  resumeBgm()
+  applyBgm()
+}
+
 onMounted(() => {
   beginBackgroundPreload()
   window.addEventListener('keydown', handleKeydown)
   window.addEventListener('resize', handleResize)
+  window.addEventListener('pagehide', handleLeavePage)
+  window.addEventListener('beforeunload', handleLeavePage)
+  window.addEventListener('pageshow', handleReturnPage)
   window.addEventListener('pointerdown', () => setBgm(lobbyMusic), { capture: true, once: true })
 })
 
@@ -378,6 +401,10 @@ onBeforeUnmount(() => {
   clearTimeout(poseTimer)
   window.removeEventListener('keydown', handleKeydown)
   window.removeEventListener('resize', handleResize)
+  window.removeEventListener('pagehide', handleLeavePage)
+  window.removeEventListener('beforeunload', handleLeavePage)
+  window.removeEventListener('pageshow', handleReturnPage)
+  stopBgm()
 })
 </script>
 
