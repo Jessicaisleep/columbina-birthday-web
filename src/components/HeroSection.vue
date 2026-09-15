@@ -2,7 +2,9 @@
   <header class="hero" ref="heroRef">
     <div class="hero-top" ref="topRef">
       <div class="hero-top-inner">
-        <h1 class="title" ref="titleRef">新月再梦听羽生</h1>
+        <h1 class="title" ref="titleRef">
+          <img class="title-logo" :src="heroLogo" alt="新月再梦听羽生 · 哥伦比娅生日会" draggable="false" />
+        </h1>
         <p class="sub">哥伦比娅 · 生日企划</p>
         <div class="flourish">愿此月夜，献予哥伦比娅</div>
       </div>
@@ -23,6 +25,7 @@
 
 <script setup>
 import { ref, onMounted, onBeforeUnmount } from 'vue'
+import heroLogo from '../assets/hero-logo.webp'
 import { useCountdown } from '../composables/useCountdown'
 
 /* 标题：cover 映射动态定位（基于 4096×2304 原图） */
@@ -104,6 +107,12 @@ onBeforeUnmount(() => {
   background:linear-gradient(180deg,#ffffff 30%,var(--blue) 130%);
   -webkit-background-clip:text;background-clip:text;color:transparent;
   filter:drop-shadow(0 3px 14px rgba(5,7,15,.85));
+}
+/* 首屏标题：使用游戏同源的 logo 美术字（1600x565 透明底） */
+.hero .title-logo{
+  display:block;width:min(520px,82vw);height:auto;margin:0 auto;
+  filter:drop-shadow(0 6px 24px rgba(5,7,15,.9));
+  -webkit-user-drag:none;user-select:none;
 }
 .hero .sub{
   margin-top:8px;font-size:clamp(11px,1.4vw,15px);letter-spacing:.5em;color:#e6ebf7;
