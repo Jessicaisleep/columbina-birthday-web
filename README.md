@@ -38,7 +38,7 @@ columbina-birthday/
 ├── package.json            # 依赖与脚本
 ├── vite.config.js          # 构建配置（base:'./'，可部署任意子路径）
 ├── public/
-│   ├── audio/              # 背景音乐（nod-krai.mp3，右上角喇叭开关控制）
+│   ├── audio/              # 背景音乐（nod-krai.bin，右上角喇叭开关控制）
 │   └── game/               # 「梦境游廊」小游戏构建产物（原样发布到 dist/game/）
 └── src/
     ├── main.js             # 应用入口（挂载 #app）
@@ -77,7 +77,7 @@ columbina-birthday/
 | 页脚声明                 | `SiteFooter.vue`                                                                   |
 | **弹窗 QQ 群号**         | `JoinModal.vue` 里的 `qq` ref（当前 `'1087063966'`），「复制 QQ 号」按钮自动跟随新号码                  |
 | 倒计时目标日期              | `src/composables/useCountdown.js` 里的 `TARGET`（当前 2027-01-14 零点）                    |
-| 背景音乐文件               | 覆盖 `public/audio/nod-krai.mp3` 即可（建议 MP3/AAC，**别用 Ogg——Safari 不支持**）               |
+| 背景音乐文件               | 覆盖 `public/audio/nod-krai.bin` 即可（内容用 MP3/AAC，**别用 Ogg——Safari 不支持**；后缀保持 `.bin` 不要改，否则会被国产浏览器当作音频资源嗅探） |
 | 背景音乐音量               | `src/components/AudioToggle.vue` 里的 `VOLUME`（当前 0.5）                               |
 | 背景音乐何时开始播放           | `AudioToggle.vue`：进站不主动播放；页面**下滑**（超过 6px）或首次点击/按键后才开始，一直不动则保持安静                   |
 | 标题贴人物位置              | `HeroSection.vue` 里的 `NECK`（基于 4096×2304 原图的归一化坐标，当前 x: 0.5151, y: 0.44）           |
