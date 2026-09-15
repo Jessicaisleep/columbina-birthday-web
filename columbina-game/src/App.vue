@@ -59,6 +59,17 @@ const assetGroups = {
 }
 const backgroundPreloadOrder = ['flightCore', 'runnerCore', 'tictactoeCore', 'gomokuCore', 'stageTwo', 'stageThree', 'stageFour']
 const currentStageBackground = computed(() => stageBackgrounds[Math.floor(score.value / 10) % stageBackgrounds.length])
+/* 部分国产浏览器（QQ / 夸克 / UC / 百度等 X5 内核）会嗅探并劫持页面里的 <video>：
+   自动悬浮播放、播放器浮层盖住返回按钮，还会提示“发现视频”。
+   触屏设备与这些内核一律不渲染 video，只显示静态首图。 */
+const SNIFF_UA = /(QQBrowser|MQQBrowser|Quark|UCBrowser|UBrowser|Baidu|baiduboxapp|MicroMessenger|X5)/i
+const TOUCH_UA = /(Android|iPhone|iPad|iPod|Mobile|HarmonyOS)/i
+const showMotion = ref(false)
+if (typeof window !== 'undefined' && typeof navigator !== 'undefined') {
+  const touchLike = TOUCH_UA.test(navigator.userAgent) || !window.matchMedia('(hover: hover)').matches
+  showMotion.value = !touchLike && !SNIFF_UA.test(navigator.userAgent)
+}
+
 function applyBgm() {
   const index = Math.floor(score.value / 10)
   if (screen.value === 'lobby') setBgm(lobbyMusic)
@@ -383,13 +394,24 @@ function handleReturnPage(event) {
   applyBgm()
 }
 
+/* 部分浏览器（Via 等）返回上一页时 pagehide 不及时，靠可见性变化兼容 */
+function handleVisibility() {
+  if (document.hidden) handleLeavePage()
+  else {
+    resumeBgm()
+    applyBgm()
+  }
+}
+
 onMounted(() => {
   beginBackgroundPreload()
   window.addEventListener('keydown', handleKeydown)
   window.addEventListener('resize', handleResize)
   window.addEventListener('pagehide', handleLeavePage)
   window.addEventListener('beforeunload', handleLeavePage)
+  window.addEventListener('unload', handleLeavePage)
   window.addEventListener('pageshow', handleReturnPage)
+  document.addEventListener('visibilitychange', handleVisibility)
   window.addEventListener('pointerdown', () => setBgm(lobbyMusic), { capture: true, once: true })
 })
 
@@ -403,7 +425,9 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', handleResize)
   window.removeEventListener('pagehide', handleLeavePage)
   window.removeEventListener('beforeunload', handleLeavePage)
+  window.removeEventListener('unload', handleLeavePage)
   window.removeEventListener('pageshow', handleReturnPage)
+  document.removeEventListener('visibilitychange', handleVisibility)
   stopBgm()
 })
 </script>
@@ -414,7 +438,7 @@ onBeforeUnmount(() => {
       <section v-if="screen === 'lobby'" key="lobby" class="lobby-page">
         <header class="topbar">
           <div class="topbar-left">
-            <a class="back-link" href="../index.html" aria-label="返回主站首页">
+            <a class="back-link" href="../index.html" aria-label="返回主站首页" @click="handleLeavePage">
               <span class="back-arrow" aria-hidden="true">←</span> 返回
             </a>
             <a class="brand" href="#" aria-label="新月再梦听羽生首页" @click.prevent>
@@ -428,6 +452,7 @@ onBeforeUnmount(() => {
         <section class="hero" :style="{ '--hero-image': `url('${eventHero}')` }">
           <img class="hero-fallback" :src="eventHero" fetchpriority="high" alt="" aria-hidden="true" />
           <video
+            v-if="showMotion"
             class="hero-video"
             autoplay
             muted
