@@ -14,7 +14,6 @@
           <path class="tip" d="M54 10l14 12-16 6z" />
         </svg>
         <p class="lgate-text">为了更好的浏览体验，请将设备横过来</p>
-        <p class="lgate-sub">横屏后即可与电脑端一致地浏览</p>
       </div>
     </div>
   </Transition>
@@ -41,10 +40,11 @@ function dismiss() {
 }
 
 function evaluate() {
-  portrait.value = mqPortrait ? mqPortrait.matches : false
   const coarse = mqCoarse ? mqCoarse.matches : false
   const shortSide = Math.min(window.innerWidth, window.innerHeight)
   isPhone.value = coarse && shortSide <= 600
+  /* 用视口宽高判断横竖屏：部分国产浏览器不更新 matchMedia('orientation') */
+  portrait.value = window.innerHeight >= window.innerWidth
   /* 横屏（或转到横屏）：本次会话彻底不再提示 */
   if (isPhone.value && !portrait.value) dismiss()
 }
@@ -121,8 +121,6 @@ onBeforeUnmount(() => {
   letter-spacing:.14em;line-height:1.75;color:var(--moon);
   text-shadow:0 2px 14px rgba(5,7,15,.8);
 }
-.lgate-sub{margin:0;font-size:12.5px;letter-spacing:.2em;color:var(--ink-faint)}
-
 .lgate-enter-active,.lgate-leave-active{transition:opacity .45s ease}
 .lgate-enter-from,.lgate-leave-to{opacity:0}
 
