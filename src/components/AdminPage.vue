@@ -1,8 +1,6 @@
 <template>
   <section class="admin">
     <div class="wrap">
-      <button type="button" class="back" @click="$emit('back')">← 返回首页</button>
-
       <!-- 未登录 -->
       <div v-if="!me" class="card login-card">
         <h2>投稿管理后台</h2>
@@ -211,8 +209,6 @@
 <script setup>
 import { ref, reactive, onMounted, computed } from 'vue'
 import { adminApi, loadToken, saveToken } from '../api/admin.js'
-
-defineEmits(['back'])
 
 const me = ref(null)
 const tk = ref('')
@@ -431,8 +427,6 @@ onMounted(bootstrap)
 
 <style scoped>
 .admin{padding:120px 0 96px}
-.back{background:none;border:1px solid var(--line);border-radius:99px;color:var(--ink-dim);font-size:13px;letter-spacing:.08em;padding:8px 18px;cursor:pointer;margin-bottom:26px;transition:color .3s,border-color .3s}
-.back:hover{color:var(--gold);border-color:rgba(230,200,138,.45)}
 .card{border:1px solid var(--line);border-radius:18px;padding:38px 34px;background:radial-gradient(ellipse at 50% -8%,rgba(157,184,232,.1),transparent 60%),linear-gradient(170deg,rgba(22,30,56,.55),rgba(9,13,26,.8))}
 .login-card{max-width:420px;margin:0 auto;text-align:center}
 .login-card h2{font-size:26px;margin-bottom:8px}

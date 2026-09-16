@@ -9,7 +9,7 @@
     <SubmitPage @back="go('home')" />
   </template>
   <template v-else-if="view === 'admin'">
-    <AdminPage @back="go('home')" />
+    <AdminPage />
   </template>
   <template v-else>
     <HeroSection />
