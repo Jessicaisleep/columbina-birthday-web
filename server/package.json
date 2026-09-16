@@ -1,0 +1,15 @@
+{
+  "name": "columbina-birthday-server",
+  "private": true,
+  "version": "1.0.0",
+  "type": "commonjs",
+  "description": "哥伦比娅生日会 · 报名投稿后端（Node + MySQL）",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dump": "node tools/dump-submissions.js"
+  },
+  "dependencies": {
+    "mysql2": "^3.24.4"
+  }
+}

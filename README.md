@@ -11,7 +11,8 @@
 
 - **Vue 3**（组合式 API + `<script setup>`）
 - **Vite 6**（开发服务器 + 生产构建）
-- 无后端、无数据库、无 UI 框架，样式为手写 CSS
+- 站点本体是纯静态产物（无 UI 框架，样式为手写 CSS）
+- **报名投稿**为前后端分离：`server/`（Node + MySQL API）+ `src/api/client.js` 调用，见下文「报名投稿」
 
 ---
 
@@ -36,7 +37,9 @@ npm run preview  # 本地预览构建产物 → http://localhost:4173
 columbina-birthday/
 ├── index.html              # Vite 入口（含字体 CDN 引用，页面由 Vue 挂载）
 ├── package.json            # 依赖与脚本
-├── vite.config.js          # 构建配置（base:'./'，可部署任意子路径）
+├── vite.config.js          # 构建配置（base:'./'，可部署任意子路径；dev/preview 把 /api 代理到本机后端）
+├── server/                 # 报名投稿后端（Node + MySQL，独立于站点构建，详情见 server/README.md）
+├── deploy/                 # 部署用的 nginx / systemd 模板
 ├── public/
 │   ├── audio/              # 背景音乐（nod-krai.bin，右上角喇叭开关控制）
 │   └── game/               # 「梦境游廊」小游戏构建产物（原样发布到 dist/game/）
@@ -47,6 +50,8 @@ columbina-birthday/
     │   └── base.css        # 全局样式：:root 变量、背景层、通用工具类
     ├── composables/
     │   └── useCountdown.js # 倒计时逻辑（目标日期在这里改）
+    ├── api/
+    │   └── client.js       # 后端接口封装（上传分片 / 提交投稿 / 查回执）
     ├── assets/
     │   └── hero_4k.png     # Hero 背景图（4096×2304，官方壁纸「月夜的叙事诗」）
     └── components/
@@ -57,8 +62,10 @@ columbina-birthday/
         ├── WorksSection.vue# 产出预告卡片
         ├── GameSection.vue # 「与哥伦比娅一起玩游戏」入口模块
         ├── TimelineSection.vue # 企划时间线
-        ├── CtaSection.vue  # 参与引导区
+        ├── CtaSection.vue  # 参与引导区（「我要报名」+「添加q群」两个按钮）
         ├── SiteFooter.vue  # 页脚声明
+        ├── SubmitPage.vue  # 报名投稿页（页内切换，不跳新标签页）
+        ├── FileUploader.vue# 作品文件上传（分片 + 断点续传）
         └── JoinModal.vue   # 参与弹窗（QQ 群号在这里改）
 ```
 
@@ -83,8 +90,70 @@ columbina-birthday/
 | 标题贴人物位置              | `HeroSection.vue` 里的 `NECK`（基于 4096×2304 原图的归一化坐标，当前 x: 0.5151, y: 0.44）           |
 | 换背景图                 | 覆盖 `src/assets/hero_4k.png` 即可；**换了尺寸记得同步改 `HeroSection.vue` 的 `ORIG_W / ORIG_H`** |
 | 配色 / 字体              | `src/styles/base.css` 的 `:root` 变量（--bg / --blue / --gold / --serif 等）             |
+| **报名按钮 / 表单字段**      | `src/components/SubmitPage.vue`（字段、下拉选项、必填规则都在这个文件里）                                   |
+| **投稿须知文案**           | `SubmitPage.vue` 里的 `NOTICE_TEXT`（改文案不用动后端）                                          |
+| 上传限制（大小 / 分片）        | `server/config.json` 的 `maxFileMB` / `defaultChunkMB`；前端提示文案在 `FileUploader.vue` 的 props          |
+| 提交频率限制               | `server/config.json` 的 `submitPerHour`（按 IP 每小时）                                    |
 | 粒子数量 / 星星数量          | `SkyCanvas.vue`（霜粒 46 个、星星 80 个）                                                   |
 | 区块增删                 | 在 `App.vue` 增删组件引用；新区块记得加 `class="reveal"` 才能有滚动浮现动画                               |
+
+---
+
+## 报名投稿（前后端分离）
+
+首页 CTA 区有两个按钮：**「我要报名」**（在上面）和 **「添加q群」**（原「参与企划」）。
+点「我要报名」不会开新标签页，而是在**同一个页面内切换**到投稿页（URL 变成 `#/signup`，刷新/后退也能回到该页）。
+
+### 前端
+
+- 投稿页：`src/components/SubmitPage.vue`（字段规则、条件显示、加减行、投稿须知门禁）
+- 上传：`src/components/FileUploader.vue`（分片上传 + 断点续传，支持拖拽 / 选文件）
+- 接口封装：`src/api/client.js`（默认请求 `/api`，可用 `VITE_API_BASE` 覆盖）
+
+### 后端
+
+`server/` 是一个独立的 Node 服务（只提供 JSON API，静态页面仍由 nginx 托管），数据库为 **MySQL**。
+详见 [`server/README.md`](server/README.md)。
+
+```bash
+cd server
+npm install
+node index.js          # 默认监听 127.0.0.1:8788
+```
+
+本地开发时 `npm run dev` 已把 `/api` 代理到 `127.0.0.1:8788`（见 `vite.config.js`），不需要额外配置。
+
+### 线上部署（当前：阿里云 47.102.116.172）
+
+| 部件 | 位置 |
+| --- | --- |
+| 站点静态文件 | `/www/wwwroot/47.102.116.172` |
+| 后端应用 | `/www/wwwroot/columbina-birthday-api`（代码 + `data/` 密钥与附件） |
+| 后端服务 | systemd `columbina-birthday-api`（以 `www` 用户运行，监听 8788） |
+| nginx 反代 | `/www/server/panel/vhost/nginx/extension/47.102.116.172/api.conf`（`/api/` → 8788） |
+| 数据库 | MySQL `columbina_birthday`，账号 `columbina`（口令在服务器 `server/data/db-secret.txt`） |
+
+改完代码后的发布流程：
+
+```powershell
+npm run build                                        # 或 npx vite build（游戏未改时更快）
+tar -czf site-dist.tgz -C dist .
+scp site-dist.tgz aliyun:/root/columbina-site-dist.tgz
+```
+
+后端有改动时再补：
+
+```powershell
+tar -czf api-src.tgz -C server --exclude=node_modules --exclude=data .
+scp api-src.tgz aliyun:/root/columbina-api-src.tgz
+```
+
+```bash
+# 服务器上
+cd /www/wwwroot/47.102.116.172 && rm -rf assets game audio && tar -xzf /root/columbina-site-dist.tgz -C .
+chown -R www:www /www/wwwroot/47.102.116.172
+# 后端：解包后 npm install --omit=dev，再 systemctl restart columbina-birthday-api
+```
 
 ---
 

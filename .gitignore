@@ -14,6 +14,11 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# 部署临时包
+deploy-tmp/
+site-dist.tgz
+api-src.tgz
+
 # 编辑器 / 系统
 .vscode/
 .idea/

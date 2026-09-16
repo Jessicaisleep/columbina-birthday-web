@@ -3,7 +3,7 @@
     <div class="modal-card">
       <button class="modal-close" id="modalClose" aria-label="关闭" @click="close">✕</button>
       <div class="modal-mark">❋</div>
-      <h3 id="modalTitle">加入企划</h3>
+      <h3 id="modalTitle">添加 QQ 群</h3>
       <p class="sub">新月再梦听羽生 · 哥伦比娅生日企划</p>
       <div class="qq-box"><span class="qq" id="qqNum">{{ qq }}</span></div>
       <button class="copy-btn" id="copyBtn" @click="copyQq">{{ copyText }}</button>

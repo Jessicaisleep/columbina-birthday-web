@@ -1,0 +1,16 @@
+[Unit]
+Description=Columbina Birthday API (columbina-birthday-api)
+After=network.target mysqld.service
+
+[Service]
+Type=simple
+WorkingDirectory=/www/wwwroot/columbina-birthday-api
+ExecStart=/usr/local/nodejs/bin/node index.js
+User=www
+Group=www
+Restart=always
+RestartSec=3
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target
