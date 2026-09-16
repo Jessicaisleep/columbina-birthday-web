@@ -15,6 +15,7 @@ import stageMusicFour from '../../p/audio/stage-04.opus'
 import { collidesWithAlpha, loadAlphaMask } from '../games/alphaCollision.js'
 import { playSfx } from '../games/sound.js'
 import { setBgm } from '../games/bgm.js'
+import { playVoice, stopVoice, VOICE_EVENTS } from '../games/voice.js'
 
 const emit = defineEmits(['back'])
 
@@ -308,18 +309,22 @@ function resetGame() {
 
 function startGame() {
   playSfx('start')
+  playVoice(VOICE_EVENTS.RUNNER_START)
   prepareGame('playing')
   animationFrame = requestAnimationFrame(gameLoop)
 }
 
 function jump() {
   if (status.value === 'over' || jumpsUsed.value >= 3) return
-  if (status.value === 'ready') startGame()
+  const startedNow = status.value === 'ready'
+  if (startedNow) startGame()
 
   const jumpForces = [-525, -510, -495]
   const level = jumpsUsed.value + 1
   playerVelocity = jumpForces[jumpsUsed.value]
   playSfx('jump')
+  /* 开局那一下不喊，避免和开场台词撞车 */
+  if (!startedNow) playVoice(VOICE_EVENTS.RUNNER_JUMP, { chance: 0.24, cooldown: 7000 })
   jumpsUsed.value = level
   onGround.value = false
   addEffect(level === 1 ? 'jump' : 'trail', level, playerX() - 18, playerY.value + playerSize().height * 0.62)
@@ -357,12 +362,36 @@ function playerRect() {
   }
 }
 
+function intersectRects(first, second) {
+  const left = Math.max(first.x, second.x)
+  const right = Math.min(first.x + first.width, second.x + second.width)
+  const top = Math.max(first.y, second.y)
+  const bottom = Math.min(first.y + first.height, second.y + second.height)
+  if (left >= right || top >= bottom) return null
+  return { x: left, y: top, width: right - left, height: bottom - top }
+}
+
 function hitObstacle() {
   const player = playerRect()
   return hazards.value.some((hazard) => {
     const rect = hazardRect(hazard)
     if (rect.x > stageSize().width + 80 || rect.x + rect.width < -80) return false
-    return collidesWithAlpha(player, rect, moonObstacleMask.value, { flipY: hazard.type === 'ceiling' })
+    if (hazard.type !== 'ceiling' || !moonObstacleMask.value) {
+      return collidesWithAlpha(player, rect, moonObstacleMask.value)
+    }
+
+    /* 悬空障碍的图保持原始比例、在裁剪框里底对齐：碰撞也用这同一套几何算，
+       否则某些机型（Huawei 等）上图片被拉抻，判定框和看到的图形对不上 */
+    const visiblePlayer = intersectRects(player, rect)
+    if (!visiblePlayer) return false
+    const renderedHeight = rect.width * moonObstacleMask.value.height / moonObstacleMask.value.width
+    const imageRect = {
+      x: rect.x,
+      y: rect.y + rect.height - renderedHeight,
+      width: rect.width,
+      height: renderedHeight,
+    }
+    return collidesWithAlpha(visiblePlayer, imageRect, moonObstacleMask.value, { flipX: true, flipY: true })
   })
 }
 
@@ -371,6 +400,7 @@ function endGame() {
   status.value = 'over'
   isHit.value = true
   playSfx('hit')
+  playVoice(VOICE_EVENTS.RUNNER_DEATH)
   cancelAnimationFrame(animationFrame)
   addEffect('hit', 0, playerX(), playerY.value + playerSize().height / 2)
   if (score.value > bestScore.value) {
@@ -472,6 +502,7 @@ function handleResize() {
 function goBack() {
   cancelAnimationFrame(animationFrame)
   clearEffectTimers()
+  stopVoice()
   emit('back')
 }
 
@@ -507,6 +538,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   cancelAnimationFrame(animationFrame)
   clearEffectTimers()
+  stopVoice()
   window.removeEventListener('keydown', handleKeydown)
   window.removeEventListener('resize', handleResize)
 })
@@ -877,10 +909,18 @@ onBeforeUnmount(() => {
 .hazard-ceiling {
   border-top: 0;
   background: transparent;
+  overflow: hidden;
 }
 
 .hazard-ceiling > img {
-  object-position: center;
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: auto;
+  max-width: none;
+  object-fit: contain;
+  object-position: center bottom;
 }
 
 .runner-player {

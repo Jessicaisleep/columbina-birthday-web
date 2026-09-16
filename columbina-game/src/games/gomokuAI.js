@@ -68,6 +68,24 @@ export function wouldWin(board, move, player) {
   return false
 }
 
+/** Check whether a move creates a contiguous four with both ends still open. */
+export function wouldCreateOpenFour(board, move, player) {
+  const { row, col } = move
+  if (!inBounds(row, col) || board[row]?.[col] !== EMPTY) return false
+  for (const [dr, dc] of GOMOKU_DIRECTIONS) {
+    const forward = countDirection(board, row, col, player, dr, dc)
+    const backward = countDirection(board, row, col, player, -dr, -dc)
+    if (1 + forward + backward !== 4) continue
+    const beforeRow = row - dr * (backward + 1)
+    const beforeCol = col - dc * (backward + 1)
+    const afterRow = row + dr * (forward + 1)
+    const afterCol = col + dc * (forward + 1)
+    if (inBounds(beforeRow, beforeCol) && inBounds(afterRow, afterCol)
+      && board[beforeRow][beforeCol] === EMPTY && board[afterRow][afterCol] === EMPTY) return true
+  }
+  return false
+}
+
 function scoreRun(length, open) {
   if (length >= 5) return GOMOKU_SCORE.FIVE + (length - 5) * 1_000
   if (length === 4) return open === 2 ? GOMOKU_SCORE.OPEN_FOUR : open === 1 ? GOMOKU_SCORE.FOUR : 0
@@ -212,15 +230,42 @@ function movePriority(board, move, player = AI) {
 }
 
 /** Return nearby empty cells, ordered by tactical value. */
-export function getGomokuCandidates(stateOrBoard, radius = 2, limit = 64) {
+export function getGomokuCandidates(stateOrBoard, radius = 2, limit = 64, player = AI) {
   const board = getBoard(stateOrBoard)
   const candidates = candidateSet(board, radius)
-  candidates.sort((a, b) => movePriority(board, b) - movePriority(board, a))
+  candidates.sort((a, b) => movePriority(board, b, player) - movePriority(board, a, player))
   return candidates.slice(0, Math.max(1, limit))
 }
 
 function winningCandidate(board, candidates, player) {
   return candidates.find((move) => wouldWin(board, move, player)) || null
+}
+
+function openFourCandidates(board, candidates, player) {
+  return candidates.filter((move) => wouldCreateOpenFour(board, move, player))
+}
+
+function chooseOpenThreeDefense(board, threats) {
+  let bestMove = threats[0]
+  let fewestRemainingThreats = Infinity
+  let bestPositionScore = -Infinity
+  for (const move of threats) {
+    const next = cloneBoard(board)
+    next[move.row][move.col] = AI
+    const nextCandidates = getGomokuCandidates(next, 2, SIZE * SIZE, HUMAN)
+    const remainingThreats = openFourCandidates(next, nextCandidates, HUMAN).length
+    const positionScore = evaluateGomokuBoard(next, AI)
+    const coordinate = move.row * SIZE + move.col
+    const bestCoordinate = bestMove.row * SIZE + bestMove.col
+    if (remainingThreats < fewestRemainingThreats
+      || (remainingThreats === fewestRemainingThreats && positionScore > bestPositionScore)
+      || (remainingThreats === fewestRemainingThreats && positionScore === bestPositionScore && coordinate < bestCoordinate)) {
+      bestMove = move
+      fewestRemainingThreats = remainingThreats
+      bestPositionScore = positionScore
+    }
+  }
+  return bestMove
 }
 
 function hasAnyFive(board, player) {
@@ -248,7 +293,7 @@ function search(board, player, depth, alpha, beta, rootPlayer, lastMove, lastPla
   if (depth <= 0) return evaluateGomokuBoard(board, rootPlayer)
 
   const maximizing = player === rootPlayer
-  const candidates = getGomokuCandidates(board, 2, depth > 1 ? 8 : 12)
+  const candidates = getGomokuCandidates(board, 2, depth > 1 ? 8 : 12, player)
   if (!candidates.length) return evaluateGomokuBoard(board, rootPlayer)
   let best = maximizing ? -Infinity : Infinity
   for (const move of candidates) {
@@ -271,13 +316,22 @@ function search(board, player, depth, alpha, beta, rootPlayer, lastMove, lastPla
 export function chooseGomokuMove(state, difficulty = 'medium') {
   const board = getBoard(state)
   if (!Array.isArray(board) || board.length !== SIZE) return null
-  const candidates = getGomokuCandidates(board, 2, difficulty === 'hard' ? 36 : 48)
+  const allCandidates = getGomokuCandidates(board, 2, SIZE * SIZE, AI)
+  const candidates = allCandidates.slice(0, difficulty === 'hard' ? 36 : 48)
   if (!candidates.length) return null
 
-  const win = winningCandidate(board, candidates, AI)
+  const win = winningCandidate(board, allCandidates, AI)
   if (win) return win
-  const block = winningCandidate(board, candidates, HUMAN)
+  const block = winningCandidate(board, allCandidates, HUMAN)
   if (block) return block
+  // An open four is a forcing continuation at every difficulty. Prefer
+  // creating our own; when only the player can create one, occupy the
+  // extension point now instead of relying on random choice or a truncated
+  // minimax branch to notice the live three.
+  const attack = openFourCandidates(board, allCandidates, AI)[0]
+  if (attack) return attack
+  const threats = openFourCandidates(board, allCandidates, HUMAN)
+  if (threats.length) return chooseOpenThreeDefense(board, threats)
   if (difficulty === 'easy') {
     // Use a small, noisy shortlist. Easy still understands immediate threats
     // (handled above), but does not play a perfect positional game.

@@ -27,6 +27,7 @@ import ticTacToeWorkerUrl from './games/ticTacToe.worker.js?worker&url'
 import gomokuWorkerUrl from './games/gomoku.worker.js?worker&url'
 import { playSfx } from './games/sound.js'
 import { resumeBgm, setBgm, stopBgm, suspendBgm } from './games/bgm.js'
+import { playVoice, stopVoice, VOICE_EVENTS } from './games/voice.js'
 import { loadAssetGroup } from './games/resourceLoader.js'
 import RunnerGame from './components/RunnerGame.vue'
 import BoardGame from './components/BoardGame.vue'
@@ -42,6 +43,8 @@ const obstacles = ref([])
 const score = ref(0)
 const bestScore = ref(Number(localStorage.getItem('columbina-best') || 0))
 const boardKind = ref('tictactoe')
+/* 五子棋「重新开始」靠重挂组件来彻底重置（见 reloadBoard）；这个计数就是新 key 的一部分 */
+const boardSessionKey = ref(0)
 const emptyStats = () => ({ tictactoe: { wins: 0, losses: 0, draws: 0 }, gomoku: { wins: 0, losses: 0, draws: 0 } })
 let savedStats
 try { savedStats = JSON.parse(localStorage.getItem('columbina-board-stats') || 'null') } catch { savedStats = null }
@@ -172,6 +175,7 @@ async function prepareAssetGroup(group, title, onReady) {
 
 function cancelAssetLoading() {
   launchToken += 1
+  stopVoice()
   foregroundGroup = ''
   pendingLaunch = null
   assetLoading.value = { active: false, title: '', loaded: 0, total: 0, error: '' }
@@ -222,6 +226,7 @@ function openRunner() {
 
 function openBoard(kind) {
   playSfx('ui')
+  playVoice(VOICE_EVENTS.BOARD_ENTER)
   const title = kind === 'tictactoe' ? '月亮棋' : '星月五子棋'
   prepareAssetGroup(`${kind}Core`, title, () => {
     cancelAnimationFrame(animationFrame)
@@ -232,7 +237,14 @@ function openBoard(kind) {
 }
 
 function closeBoard() {
+  stopVoice()
   screen.value = 'lobby'
+  nextTick(() => window.scrollTo({ top: 0, behavior: 'instant' }))
+}
+
+/* 五子棋重开会重挂棋盘组件（避免残局/语音状态残留） */
+function reloadBoard() {
+  boardSessionKey.value += 1
   nextTick(() => window.scrollTo({ top: 0, behavior: 'instant' }))
 }
 
@@ -244,6 +256,7 @@ function saveBoardResult({ game, outcome }) {
 
 function returnToLobby() {
   playSfx('ui')
+  stopVoice()
   cancelAnimationFrame(animationFrame)
   clearTimeout(poseTimer)
   screen.value = 'lobby'
@@ -252,6 +265,7 @@ function returnToLobby() {
 
 function startGame() {
   playSfx('start')
+  playVoice(VOICE_EVENTS.RUNNER_START)
   resetGame()
   gameStatus.value = 'playing'
   addObstacle(true)
@@ -277,6 +291,7 @@ function flap() {
 
   velocity = -480
   playSfx('jump')
+  playVoice(VOICE_EVENTS.RUNNER_JUMP, { chance: 0.24, cooldown: 7000 })
   showJumpPose()
 }
 
@@ -324,6 +339,7 @@ function collides(obstacle) {
 
 function endGame() {
   playSfx('hit')
+  playVoice(VOICE_EVENTS.RUNNER_DEATH)
   gameStatus.value = 'over'
   isJumping.value = false
   cancelAnimationFrame(animationFrame)
@@ -418,6 +434,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   launchToken += 1
+  stopVoice()
   preloadTimers.forEach((timer) => window.clearTimeout(timer))
   assetGroupTasks.forEach(({ controller }) => controller.abort())
   cancelAnimationFrame(animationFrame)
@@ -690,7 +707,7 @@ onBeforeUnmount(() => {
       </section>
 
       <RunnerGame v-else-if="screen === 'runner'" key="runner" @back="returnToLobby" />
-      <BoardGame v-else :key="`board-${boardKind}`" :kind="boardKind" @back="closeBoard" @result="saveBoardResult" />
+      <BoardGame v-else :key="`board-${boardKind}-${boardSessionKey}`" :kind="boardKind" @back="closeBoard" @reload="reloadBoard" @result="saveBoardResult" />
     </Transition>
 
     <section v-if="assetLoading.active" class="asset-loader asset-loader-game" aria-live="polite">

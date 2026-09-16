@@ -14,9 +14,10 @@ import { TicTacToeAI } from '../games/ticTacToeAI.js'
 import { createGomokuState, makeGomokuMove } from '../games/gomokuEngine.js'
 import { GomokuAI } from '../games/gomokuAI.js'
 import { playSfx } from '../games/sound.js'
+import { playVoice, stopVoice, VOICE_EVENTS } from '../games/voice.js'
 
 const props = defineProps({ kind: { type: String, required: true } })
-const emit = defineEmits(['back', 'result'])
+const emit = defineEmits(['back', 'reload', 'result'])
 
 const difficulty = ref('medium')
 const firstPlayer = ref(HUMAN)
@@ -56,6 +57,8 @@ function recordResult() {
   resultRecorded.value = true
   const outcome = state.value.status === GAME_STATUS.WON ? 'wins' : state.value.status === GAME_STATUS.LOST ? 'losses' : 'draws'
   playSfx(outcome === 'wins' ? 'win' : outcome === 'losses' ? 'lose' : 'draw')
+  if (outcome === 'wins') playVoice(VOICE_EVENTS.BOARD_PLAYER_WIN)
+  else if (outcome === 'losses') playVoice(VOICE_EVENTS.BOARD_COLUMBINA_WIN)
   emit('result', { game: props.kind, outcome })
 }
 
@@ -115,12 +118,15 @@ function play(row, col) {
   if (next === state.value) return
   state.value = next
   playSfx('piece')
-  recordResult()
-  if (!gameOver.value) window.setTimeout(askAI, 180)
+  if (gameOver.value) recordResult()
+  else {
+    /* 玩家落子后偶尔说一句（带冷却，不然每手都呛） */
+    playVoice(VOICE_EVENTS.BOARD_MOVE, { chance: 0.4, cooldown: 6500 })
+    window.setTimeout(askAI, 180)
+  }
 }
 
-function restart() {
-  playSfx('ui')
+function resetRound() {
   requestId += 1
   aiAbortController?.abort()
   thinking.value = false
@@ -132,7 +138,27 @@ function restart() {
 
 function beginGame() {
   setupConfirmed.value = true
-  restart()
+  resetRound()
+}
+
+/* 五子棋重开改成重挂组件（交给 App 的 reloadBoard）；月亮棋仍走局部重置 */
+function restart() {
+  if (props.kind !== 'gomoku') {
+    playSfx('ui')
+    resetRound()
+    return
+  }
+  playSfx('ui')
+  stopVoice()
+  requestId += 1
+  aiAbortController?.abort()
+  emit('reload')
+}
+
+function changeDifficulty() {
+  playSfx('ui')
+  /* “要我让你一点吗”——只有让子的档位才有这句 */
+  if (difficulty.value !== 'hard') playVoice(VOICE_EVENTS.BOARD_HANDICAP)
 }
 
 function claimDraw() {
@@ -142,6 +168,7 @@ function claimDraw() {
 
 function leave() {
   playSfx('ui')
+  stopVoice()
   requestId += 1
   aiAbortController?.abort()
   emit('back')
@@ -157,7 +184,7 @@ function pieceRotation(player, index) {
   return `${(player === HUMAN ? -3 : 3) + variation}deg`
 }
 
-onBeforeUnmount(() => { requestId += 1; aiAbortController?.abort() })
+onBeforeUnmount(() => { requestId += 1; aiAbortController?.abort(); stopVoice() })
 </script>
 
 <template>
@@ -231,7 +258,7 @@ onBeforeUnmount(() => { requestId += 1; aiAbortController?.abort() })
         <h2 id="setup-title">和哥伦比娅下棋</h2>
         <p>开始之前，决定她要让你多少，以及谁先落子。</p>
 
-        <fieldset @change="playSfx('ui')">
+        <fieldset @change="changeDifficulty">
           <legend>哥伦比娅问：“要我让让你吗？”</legend>
           <div class="option-row">
             <label v-for="item in [['easy','多让一点'],['medium','稍微让让'],['hard','不用让']]" :key="item[0]">

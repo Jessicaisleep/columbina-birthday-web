@@ -30,9 +30,9 @@ function overlaps(first, second) {
 
 /**
  * Tests the player's hit box against the opaque pixels of a rendered image.
- * `flipY` follows the CSS transforms used by mirrored top/ceiling obstacles.
+ * `flipX` and `flipY` follow the CSS transforms used by mirrored obstacles.
  */
-export function collidesWithAlpha(hitBox, imageBox, mask, { flipY = false, threshold = 36 } = {}) {
+export function collidesWithAlpha(hitBox, imageBox, mask, { flipX = false, flipY = false, threshold = 36 } = {}) {
   if (!mask || !overlaps(hitBox, imageBox)) return false
 
   const left = Math.max(hitBox.x, imageBox.x)
@@ -43,8 +43,9 @@ export function collidesWithAlpha(hitBox, imageBox, mask, { flipY = false, thres
 
   for (let y = top; y < bottom; y += sampleStep) {
     for (let x = left; x < right; x += sampleStep) {
-      const normalizedX = (x - imageBox.x) / imageBox.width
+      const rawX = (x - imageBox.x) / imageBox.width
       const rawY = (y - imageBox.y) / imageBox.height
+      const normalizedX = flipX ? 1 - rawX : rawX
       const normalizedY = flipY ? 1 - rawY : rawY
       const pixelX = Math.max(0, Math.min(mask.width - 1, Math.floor(normalizedX * mask.width)))
       const pixelY = Math.max(0, Math.min(mask.height - 1, Math.floor(normalizedY * mask.height)))
