@@ -217,7 +217,7 @@
       <div class="modal-card">
         <button type="button" class="modal-close" aria-label="关闭" @click="closeEditModal">✕</button>
         <h3>修改投稿</h3>
-        <p class="edit-lead">输入投稿时收到的编号，我们会把你填过的内容读回来，改完直接覆盖原投稿，编号不变。</p>
+        <p class="edit-lead">请输入投稿编号</p>
         <input
           v-model.trim="editCode"
           class="code-input mono"
