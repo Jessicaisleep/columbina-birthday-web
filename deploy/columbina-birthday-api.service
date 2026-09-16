@@ -1,13 +1,14 @@
+# 报名投稿后端 · systemd 常驻样例（路径与运行用户按实际环境改）
 [Unit]
 Description=Columbina Birthday API (columbina-birthday-api)
 After=network.target mysqld.service
 
 [Service]
 Type=simple
-WorkingDirectory=/www/wwwroot/columbina-birthday-api
-ExecStart=/usr/local/nodejs/bin/node index.js
-User=www
-Group=www
+WorkingDirectory=/path/to/columbina-birthday-api
+ExecStart=/usr/bin/node index.js
+User=www-data
+Group=www-data
 Restart=always
 RestartSec=3
 Environment=NODE_ENV=production

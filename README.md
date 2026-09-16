@@ -123,37 +123,25 @@ node index.js          # 默认监听 127.0.0.1:8788
 
 本地开发时 `npm run dev` 已把 `/api` 代理到 `127.0.0.1:8788`（见 `vite.config.js`），不需要额外配置。
 
-### 线上部署（当前：阿里云 47.102.116.172）
+### 部署到自己的服务器
 
-| 部件 | 位置 |
-| --- | --- |
-| 站点静态文件 | `/www/wwwroot/47.102.116.172` |
-| 后端应用 | `/www/wwwroot/columbina-birthday-api`（代码 + `data/` 密钥与附件） |
-| 后端服务 | systemd `columbina-birthday-api`（以 `www` 用户运行，监听 8788） |
-| nginx 反代 | `/www/server/panel/vhost/nginx/extension/47.102.116.172/api.conf`（`/api/` → 8788） |
-| 数据库 | MySQL `columbina_birthday`，账号 `columbina`（口令在服务器 `server/data/db-secret.txt`） |
-
-改完代码后的发布流程：
-
-```powershell
-npm run build                                        # 或 npx vite build（游戏未改时更快）
-tar -czf site-dist.tgz -C dist .
-scp site-dist.tgz aliyun:/root/columbina-site-dist.tgz
-```
-
-后端有改动时再补：
-
-```powershell
-tar -czf api-src.tgz -C server --exclude=node_modules --exclude=data .
-scp api-src.tgz aliyun:/root/columbina-api-src.tgz
-```
+前端是纯静态产物，后端是独立的 Node 服务（默认只监听本机 8788，由 nginx 反代 `/api/`）。
+整个过程就三步：
 
 ```bash
-# 服务器上
-cd /www/wwwroot/47.102.116.172 && rm -rf assets game audio && tar -xzf /root/columbina-site-dist.tgz -C .
-chown -R www:www /www/wwwroot/47.102.116.172
-# 后端：解包后 npm install --omit=dev，再 systemctl restart columbina-birthday-api
+# 1. 本地打包
+npm run build                 # 游戏没改时用 npx vite build 更快
+tar -czf site-dist.tgz -C dist .
+
+# 2. 上传（<用户>@<服务器> 换成你自己的）
+scp site-dist.tgz <用户>@<服务器>:~/
+
+# 3. 服务器上解包到站点根目录
+tar -xzf ~/site-dist.tgz -C <站点根目录>
 ```
+
+后端有改动时，把 `server/` 一并打包上传，解包后 `npm install --omit=dev`，再重启后端服务。
+nginx 反代与 systemd 常驻的配置样例见 [`deploy/`](deploy/)；数据库、端口、密钥文件路径都在 `server/config.json` 里按实际环境填写。
 
 ---
 
