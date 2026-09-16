@@ -117,7 +117,10 @@
                 {{ revealed[u.id] ? '隐藏密码' : (revealingId === u.id ? '读取中…' : '查看密码') }}
               </button>
               <button class="mini" type="button" @click="askReset(u)">重置口令</button>
-              <button class="mini danger" type="button" :disabled="u.username === me.username" @click="askDeleteUser(u)">删除</button>
+              <button class="mini danger" type="button"
+                      :disabled="u.username === me.username || u.protected"
+                      :title="u.protected ? '内置超级管理员，不可删除' : (u.username === me.username ? '不能删除自己' : '')"
+                      @click="askDeleteUser(u)">删除</button>
             </li>
           </ul>
         </section>
@@ -420,7 +423,10 @@ async function createUser() {
 }
 
 function askReset(u) { pendingUser.value = { mode: 'reset', user: u, secret: '' } }
-function askDeleteUser(u) { pendingUser.value = { mode: 'delete', user: u } }
+function askDeleteUser(u) {
+  if (u.protected) return
+  pendingUser.value = { mode: 'delete', user: u }
+}
 
 /** 查看口令：解密服务端存的副本；旧账号没副本时给出“重置一次”的提示 */
 async function toggleReveal(u) {

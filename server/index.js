@@ -26,6 +26,8 @@ const auth = require('./lib/auth');
 const { validateSubmission } = require('./lib/validate');
 
 const cfg = db.loadConfig();
+/* 内置超级管理员：不可删除（用户名取自 config.initAdmin，默认 admin） */
+const PROTECTED_ADMIN = String((cfg.initAdmin && cfg.initAdmin.username) || 'admin');
 const ROOT = __dirname;
 const DATA_DIR = path.isAbsolute(cfg.dataDir || 'data')
   ? cfg.dataDir
@@ -474,6 +476,7 @@ async function handleUsersList(req, res) {
       id: u.id, username: u.username, role: u.role,
       createdAt: u.created_at, createdBy: u.created_by, lastLoginAt: u.last_login_at,
       hasSecret: !!u.has_secret,
+      protected: u.username === PROTECTED_ADMIN,
     })),
   });
 }
@@ -554,6 +557,10 @@ async function handleUserReveal(req, res, id, me) {
 async function handleUserDelete(req, res, me, id) {
   const u = await db.getAdminUserById(id);
   if (!u) return json(res, 404, { ok: false, error: '账号不存在' });
+  /* 内置超级管理员一直是系统的落脚点：谁都删不掉（包括总秘钥和它自己） */
+  if (u.username === PROTECTED_ADMIN) {
+    return json(res, 403, { ok: false, error: '内置超级管理员不可删除' });
+  }
   if (!me.viaMaster && me.userId === id) {
     return json(res, 400, { ok: false, error: '不能删除自己' });
   }
