@@ -77,4 +77,24 @@ export async function getReceipt(id) {
   return readJson(res)
 }
 
+/** 按编号读回投稿（修改前回显用） */
+export async function lookupSubmission(id) {
+  const res = await fetch(url('/submissions/lookup'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id }),
+  })
+  return readJson(res)
+}
+
+/** 按编号覆盖修改（编号不变） */
+export async function updateSubmission(id, payload) {
+  const res = await fetch(url(`/submissions/${id}`), {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  return readJson(res)
+}
+
 export { API_BASE }

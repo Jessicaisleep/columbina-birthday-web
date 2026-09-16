@@ -32,7 +32,10 @@
           <span class="pct" :class="it.status">{{ it.percent }}%</span>
         </div>
         <div class="state" :class="it.status">
-          <template v-if="it.status === 'done'">已上传 ✓　<span class="dim">{{ doneText(it) }}</span></template>
+          <template v-if="it.status === 'done'">
+            <template v-if="it.existing">原有附件 ✓　<span class="dim">不改动就保持原样</span></template>
+            <template v-else>已上传 ✓　<span class="dim">{{ doneText(it) }}</span></template>
+          </template>
           <template v-else-if="it.status === 'error'">{{ it.error || '上传失败' }}　<button type="button" class="retry" @click="retry(it)">重试</button></template>
           <template v-else-if="it.status === 'uploading'">
             上传中 · <b class="spd">{{ formatSpeed(it.speed) }}</b> · {{ prettySize(sentBytes(it)) }} / {{ prettySize(it.file.size) }}
@@ -52,6 +55,8 @@ const props = defineProps({
   maxFiles: { type: Number, default: 5 },
   maxMB: { type: Number, default: 2048 },
   accept: { type: String, default: 'video/*,image/*,audio/*,.zip,.rar,.7z,.psd,.pdf' },
+  /* 修改已有投稿时传进来：服务器上已经存在的附件（{ id, name, size }） */
+  initial: { type: Array, default: () => [] },
 })
 const emit = defineEmits(['change'])
 
@@ -100,7 +105,24 @@ function dropPending(uploadId) {
 onMounted(() => {
   const pending = loadPending()
   if (pending.length) resumeHint.value = `${pending[0].name}（${prettySize(pending[0].size)}）`
+  seedInitial()
 })
+
+/** 回显已有附件：直接摆成「已完成」状态，可以单独移除（移除后保存即从服务器删掉） */
+function seedInitial() {
+  for (const f of props.initial) {
+    if (!f || !f.id) continue
+    if (items.value.some((it) => it.fileId === f.id)) continue
+    const it = reactiveItem({ name: f.name, size: Number(f.size) || 0 })
+    it.fileId = f.id
+    it.existing = true
+    it.status = 'done'
+    it.percent = 100
+    it.uploadedBytes = Number(f.size) || 0
+    items.value.push(it)
+  }
+  emitChange()
+}
 
 /* ---------------- 选择文件 ---------------- */
 
@@ -120,7 +142,7 @@ function addFiles(files) {
   for (const file of files) {
     if (items.value.length >= props.maxFiles) break
     if (file.size > props.maxMB * 1024 * 1024) {
-      items.value.push({ key: `k${++keySeq}`, file, status: 'error', error: `超过 ${props.maxMB} MB 上限`, percent: 0, uploadedBytes: 0, speed: 0, chunks: new Set() })
+      items.value.push({ key: `k${++keySeq}`, file, existing: false, status: 'error', error: `超过 ${props.maxMB} MB 上限`, percent: 0, uploadedBytes: 0, speed: 0, chunks: new Set() })
       continue
     }
     if (items.value.some((it) => it.file.name === file.name && it.file.size === file.size && it.status !== 'error')) continue
@@ -135,6 +157,7 @@ function reactiveItem(file) {
   return reactive({
     key: `k${++keySeq}`,
     file,
+    existing: false,
     uploadId: null,
     chunkSize: CHUNK_FALLBACK,
     chunksTotal: 0,
@@ -169,7 +192,9 @@ function retry(it) {
 }
 
 function emitChange() {
-  emit('change', items.value.filter((it) => it.fileId).map((it) => ({ fileId: it.fileId, name: it.file.name, size: it.file.size })))
+  emit('change', items.value
+    .filter((it) => it.fileId)
+    .map((it) => ({ fileId: it.fileId, name: it.file.name, size: it.file.size, existing: !!it.existing })))
 }
 
 /* ---------------- 上传（分片 + 断点续传） ---------------- */

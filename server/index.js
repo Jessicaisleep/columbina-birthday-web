@@ -13,6 +13,8 @@
  *   POST   /api/uploads/:id/complete         合并分片
  *   POST   /api/submissions                  提交投稿
  *   GET    /api/submissions/:id              查询投稿回执
+ *   POST   /api/submissions/lookup           按编号读回投稿（修改前回显用）
+ *   PUT    /api/submissions/:id              按编号覆盖更新（编号不变）
  *   GET    /api/admin/submissions            管理端列表（需 ?tk=<adminSecret>）
  *   GET    /api/admin/submissions/:id        管理端详情
  *   GET    /api/admin/files/:id              下载附件
@@ -319,6 +321,108 @@ async function handleSubmissionReceipt(req, res, id) {
   });
 }
 
+/* ---------------- 按编号读回 / 覆盖修改 ---------------- */
+
+/* 编号就是唯一的凭据，所以「读回」和「修改」都要限流，防着脚本撞编号 */
+const LOOKUP_WINDOW = 15 * 60 * 1000;
+const LOOKUP_MAX = 30;
+
+function editThrottled(req, res, tag) {
+  const key = `${tag}|${clientIp(req)}`;
+  if (auth.tooManyAttempts(key, LOOKUP_MAX, LOOKUP_WINDOW)) {
+    json(res, 429, { ok: false, error: '操作过于频繁，请稍后再试' });
+    return true;
+  }
+  auth.noteFailure(key, LOOKUP_WINDOW);
+  return false;
+}
+
+/** 按编号把投稿读回来（回显用）：字段原样返回，附件带上 id 供保留/删除 */
+async function handleSubmissionLookup(req, res) {
+  if (editThrottled(req, res, 'lookup')) return;
+  const body = await readJsonBody(req);
+  const id = String(body.id || '').trim().toLowerCase();
+  if (!/^[a-f0-9]{32}$/.test(id)) {
+    return json(res, 400, { ok: false, error: '编号格式不正确，应该是一串 32 位的字母数字编号' });
+  }
+  const row = await db.getSubmission(id);
+  if (!row) return json(res, 404, { ok: false, error: '没有找到这个编号对应的投稿，请核对后重试' });
+  const files = await db.filesOf(id);
+  return json(res, 200, {
+    ok: true,
+    item: { ...rowToJson(row, true), updatedAt: row.updated_at, files: files.map(fileToJson) },
+  });
+}
+
+/** 覆盖更新：编号不变，内容整份换成新的；没保留的旧附件连磁盘文件一起删掉 */
+async function handleSubmissionUpdate(req, res, id) {
+  if (editThrottled(req, res, 'update')) return;
+  const body = await readJsonBody(req, 4 * MB);
+  const row = await db.getSubmission(id);
+  if (!row) return json(res, 404, { ok: false, error: '投稿不存在，编号可能有误' });
+
+  /* 原有附件：只有确实属于这份投稿的才允许保留 */
+  const mine = await db.filesOf(id);
+  const mineIds = new Set(mine.map((f) => f.id));
+  const keep = (Array.isArray(body.keepFileIds) ? body.keepFileIds : [])
+    .map((x) => String(x))
+    .filter((x) => mineIds.has(x));
+
+  /* 校验规则与首次提交完全一致：把「保留的旧附件 + 本次新上传」合成一份再校验 */
+  const merged = { ...body, fileIds: [...keep, ...(Array.isArray(body.fileIds) ? body.fileIds : [])] };
+  const { ok, errors, value } = validateSubmission(merged);
+  if (!ok) return json(res, 400, { ok: false, error: '表单校验未通过', errors });
+
+  const newIds = value.fileIds.filter((f) => !keep.includes(f));
+  const added = [];
+  for (const fid of newIds) {
+    const f = await db.getFile(fid);
+    if (!f || f.submission_id) {
+      return json(res, 400, { ok: false, errors: { fileIds: '附件不存在或已被使用，请重新上传' } });
+    }
+    added.push(f);
+  }
+
+  await db.updateSubmission(id, {
+    contact_type: value.contactType,
+    contact_value: value.contactValue,
+    nicknames: value.nicknames,
+    creation_type: value.creationType,
+    team_members: value.teamMembers.length ? JSON.stringify(value.teamMembers) : null,
+    title: value.title,
+    category: value.category,
+    intro: value.intro,
+    duration: value.duration,
+    has_other_chars: value.hasOtherCharacters ? 1 : 0,
+    other_chars: value.otherCharacters.length ? JSON.stringify(value.otherCharacters) : null,
+    progress: value.progress,
+    preview_type: value.previewType,
+    preview_link: value.previewLink,
+    agreed: 1,
+    updated_at: db.now(),
+  });
+
+  const kept = mine.filter((f) => keep.includes(f.id));
+  const dropped = mine.filter((f) => !keep.includes(f.id));
+  for (const f of dropped) {
+    await db.deleteFileRecord(f.id);
+    if (f.stored_path) await fs.promises.rm(f.stored_path, { force: true }).catch(() => {});
+  }
+  await db.attachFiles(id, newIds);
+
+  return json(res, 200, {
+    ok: true,
+    updated: true,
+    id,
+    title: value.title,
+    category: value.category,
+    createdAt: row.created_at,
+    updatedAt: db.now(),
+    maskedContact: maskContact(value.contactType, value.contactValue),
+    files: [...kept, ...added].map((f) => ({ id: f.id, name: f.original_name, size: Number(f.size) })),
+  });
+}
+
 function rowToJson(row, withContact) {
   const out = {
     id: row.id,
@@ -338,6 +442,7 @@ function rowToJson(row, withContact) {
     favorite: !!row.favorite,
     favoritedAt: row.favorited_at,
     createdAt: row.created_at,
+    updatedAt: row.updated_at || null,
   };
   if (withContact) {
     out.contactType = row.contact_type;
@@ -647,6 +752,8 @@ const ROUTES = [
   ['PUT', /^\/api\/uploads\/([a-f0-9]{32})\/chunk\/(\d+)\/?$/, async (req, res, m) => handleUploadChunk(req, res, m[1], Number(m[2])), null],
   ['POST', /^\/api\/uploads\/([a-f0-9]{32})\/complete\/?$/, async (req, res, m) => handleUploadComplete(req, res, m[1]), null],
   ['POST', /^\/api\/submissions\/?$/, handleSubmit, null],
+  ['POST', /^\/api\/submissions\/lookup\/?$/, handleSubmissionLookup, null],
+  ['PUT', /^\/api\/submissions\/([a-f0-9]{32})\/?$/, async (req, res, m) => handleSubmissionUpdate(req, res, m[1]), null],
   ['GET', /^\/api\/submissions\/([a-f0-9]{32})\/?$/, async (req, res, m) => handleSubmissionReceipt(req, res, m[1]), null],
 
   /* 管理端 */

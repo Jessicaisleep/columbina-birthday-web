@@ -106,8 +106,9 @@ columbina-birthday/
 
 ### 前端
 
-- 投稿页：`src/components/SubmitPage.vue`（字段规则、条件显示、加减行、投稿须知门禁）
-- 上传：`src/components/FileUploader.vue`（分片上传 + 断点续传，支持拖拽 / 选文件）
+- 投稿页：`src/components/SubmitPage.vue`（字段规则、条件显示、加减行、投稿须知门禁、右上角「我要修改」）
+- 修改已有投稿：右上角「我要修改」→ 输入投稿编号 → 读回原内容（不用重填）→ 保存即覆盖，**编号不变**；附件可保留或删掉
+- 上传：`src/components/FileUploader.vue`（分片上传 + 断点续传，支持拖拽 / 选文件；修改已有投稿时回显原有附件）
 - 接口封装：`src/api/client.js`（默认请求 `/api`，可用 `VITE_API_BASE` 覆盖）
 
 ### 后端

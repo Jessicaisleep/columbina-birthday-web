@@ -111,6 +111,7 @@ const MIGRATIONS = [
   { table: 'submissions', column: 'favorite', sql: "ALTER TABLE submissions ADD COLUMN favorite TINYINT(1) NOT NULL DEFAULT 0" },
   { table: 'submissions', column: 'favorited_at', sql: "ALTER TABLE submissions ADD COLUMN favorited_at DATETIME NULL" },
   { table: 'admin_users', column: 'secret_enc', sql: "ALTER TABLE admin_users ADD COLUMN secret_enc VARCHAR(255) NULL" },
+  { table: 'submissions', column: 'updated_at', sql: "ALTER TABLE submissions ADD COLUMN updated_at DATETIME NULL" },
 ];
 
 async function migrate() {
@@ -238,9 +239,31 @@ async function insertSubmission(row) {
   );
 }
 
+/* 覆盖更新：投稿编号（id）与首次提交的 ip/ua 保持不变，只换内容 */
+const SUB_UPDATE_FIELDS = [
+  'contact_type', 'contact_value', 'nicknames', 'creation_type', 'team_members',
+  'title', 'category', 'intro', 'duration', 'has_other_chars', 'other_chars',
+  'progress', 'preview_type', 'preview_link', 'agreed', 'updated_at',
+];
+async function updateSubmission(id, row) {
+  const sets = SUB_UPDATE_FIELDS.map((f) => `${f} = ?`).join(', ');
+  await get().query(
+    `UPDATE submissions SET ${sets} WHERE id = ?`,
+    [...SUB_UPDATE_FIELDS.map((f) => (row[f] === undefined ? null : row[f])), id]
+  );
+}
+
 async function getSubmission(id) {
   const [rows] = await get().query('SELECT * FROM submissions WHERE id = ? LIMIT 1', [id]);
   return rows[0] || null;
+}
+
+/* 删除单条附件记录（返回被删的那行，便于调用方顺手删磁盘文件） */
+async function deleteFileRecord(fileId) {
+  const [rows] = await get().query('SELECT * FROM submission_files WHERE id = ? LIMIT 1', [fileId]);
+  const row = rows[0] || null;
+  if (row) await get().query('DELETE FROM submission_files WHERE id = ?', [fileId]);
+  return row;
 }
 
 async function listSubmissions(limit, offset) {
@@ -417,7 +440,8 @@ module.exports = {
   loadConfig, readAdminSecret, init, get, now,
   createUpload, getUpload, touchUpload, findUploadByNameSize, staleUploads, dropUpload,
   insertFile, getFile, attachFiles, filesOf,
-  insertSubmission, getSubmission, listSubmissions, countSubmissions, countRecentSubmissions,
+  insertSubmission, updateSubmission, getSubmission, listSubmissions, countSubmissions, countRecentSubmissions,
+  deleteFileRecord,
   listForAdmin, adminStats, setFavorite, hardDeleteSubmission,
   countAdmins, listAdminUsers, getAdminUserById, getAdminUserByName, createAdminUser,
   updateAdminSecret, touchAdminLogin, deleteAdminUser, countSupers,
