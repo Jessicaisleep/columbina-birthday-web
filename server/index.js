@@ -378,6 +378,8 @@ async function handleLogin(req, res) {
   const tk = auth.newId(32);
   const ttl = auth.sessionTtlMs(cfg);
   await db.createSession({ tk, userId: user.id, role: user.role, expiresAt: new Date(Date.now() + ttl) });
+  /* 单点登录：同一账号新登录就把其它设备上的会话踢掉，只留这一条 */
+  await db.revokeUserSessions(user.id, tk);
   await db.touchAdminLogin(user.id);
   return json(res, 200, {
     ok: true, tk, role: user.role, username: user.username, expiresAt: new Date(Date.now() + ttl).toISOString(),
@@ -510,7 +512,7 @@ async function handleUserCreate(req, res, me) {
   });
 }
 
-async function handleUserSecret(req, res, id) {
+async function handleUserSecret(req, res, id, me) {
   const body = await readJsonBody(req);
   const secret = String(body.secret || '');
   if (!auth.validSecret(secret)) {
@@ -518,10 +520,17 @@ async function handleUserSecret(req, res, id) {
   }
   const u = await db.getAdminUserById(id);
   if (!u) return json(res, 404, { ok: false, error: '账号不存在' });
+  /* 重置权限：普通管理员的随便重置；超级管理员只能重置自己的（超管之间不行，总秘钥也不行） */
+  const isSelf = !me.viaMaster && me.userId === u.id;
+  if (u.role !== 'admin' && !isSelf) {
+    return json(res, 403, { ok: false, error: '只能重置自己的口令（其他超级管理员不行）' });
+  }
   const salt = auth.newSalt();
   const enc = SECRET_KEY ? auth.encryptSecret(secret, SECRET_KEY) : null;
   await db.updateAdminSecret(id, salt, auth.hashSecret(secret, salt), enc);
-  return json(res, 200, { ok: true, id, username: u.username });
+  /* 改了口令就作废该账号所有会话（含自己）：下次要用新口令重新登录 */
+  await db.revokeUserSessions(id);
+  return json(res, 200, { ok: true, id, username: u.username, selfReset: isSelf, sessionsRevoked: true });
 }
 
 /**
@@ -594,7 +603,7 @@ const ROUTES = [
   ['GET', /^\/api\/admin\/files\/([a-f0-9]{32})\/?$/, async (req, res, m) => handleAdminFile(req, res, m[1]), 'session'],
   ['GET', /^\/api\/admin\/users\/?$/, handleUsersList, 'super'],
   ['POST', /^\/api\/admin\/users\/?$/, async (req, res, m, url, me) => handleUserCreate(req, res, me), 'super'],
-  ['POST', /^\/api\/admin\/users\/([a-f0-9]{32})\/secret\/?$/, async (req, res, m) => handleUserSecret(req, res, m[1]), 'super'],
+  ['POST', /^\/api\/admin\/users\/([a-f0-9]{32})\/secret\/?$/, async (req, res, m, url, me) => handleUserSecret(req, res, m[1], me), 'super'],
   ['GET', /^\/api\/admin\/users\/([a-f0-9]{32})\/secret\/?$/, async (req, res, m, url, me) => handleUserReveal(req, res, m[1], me), 'super'],
   ['DELETE', /^\/api\/admin\/users\/([a-f0-9]{32})\/?$/, async (req, res, m, url, me) => handleUserDelete(req, res, me, m[1]), 'super'],
 ];

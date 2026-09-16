@@ -15,6 +15,7 @@
             <input v-model="loginForm.secret" type="password" autocomplete="current-password" placeholder="登录口令" />
           </label>
           <button class="btn" type="submit" :disabled="logging">{{ logging ? '登录中…' : '登录' }}</button>
+          <p v-if="sessionNotice" class="err center">{{ sessionNotice }}</p>
           <p v-if="loginError" class="err center">{{ loginError }}</p>
         </form>
       </div>
@@ -116,7 +117,10 @@
                       @click="toggleReveal(u)">
                 {{ revealed[u.id] ? '隐藏密码' : (revealingId === u.id ? '读取中…' : '查看密码') }}
               </button>
-              <button class="mini" type="button" @click="askReset(u)">重置口令</button>
+              <button class="mini" type="button"
+                      :disabled="userBusy || !canReset(u)"
+                      :title="canReset(u) ? '' : '只能重置自己的口令（其他超级管理员不行）'"
+                      @click="askReset(u)">重置口令</button>
               <button class="mini danger" type="button"
                       :disabled="u.username === me.username || u.protected"
                       :title="u.protected ? '内置超级管理员，不可删除' : (u.username === me.username ? '不能删除自己' : '')"
@@ -234,6 +238,8 @@ const listError = ref('')
 const loginForm = reactive({ username: '', secret: '' })
 const logging = ref(false)
 const loginError = ref('')
+/* 被踢下线的原因提示（别处登录 / 口令被改 / 会话到期） */
+const sessionNotice = ref('')
 
 const detail = ref(null)
 const pendingDelete = ref(null)
@@ -257,6 +263,11 @@ const TYPE_LABEL = { qq: 'QQ', wechat: '微信', email: '邮箱' }
 
 /** 能看口令的：普通管理员（都是），或超级管理员看自己 */
 function canReveal(u) {
+  return u.role === 'admin' || (!!me.value && u.id === me.value.id)
+}
+
+/** 能重置口令的：普通管理员随便重置；超级管理员只能重置自己的 */
+function canReset(u) {
   return u.role === 'admin' || (!!me.value && u.id === me.value.id)
 }
 
@@ -293,11 +304,13 @@ async function bootstrap() {
   } else {
     saveToken('')
     tk.value = ''
+    if (r.status === 401) sessionNotice.value = '登录已失效（可能在别处登录，或口令被修改），请重新登录。'
   }
 }
 
 async function doLogin() {
   loginError.value = ''
+  sessionNotice.value = ''
   if (!loginForm.username || !loginForm.secret) { loginError.value = '请填写账号与口令'; return }
   logging.value = true
   try {
@@ -334,7 +347,12 @@ async function refresh() {
   try {
     const [list, st] = await Promise.all([adminApi.list({ filter: filter.value, q: q.value, limit: 50 }), adminApi.stats()])
     if (!list.ok) {
-      if (list.status === 401) { me.value = null; saveToken(''); return }
+      if (list.status === 401) {
+        sessionNotice.value = '会话已失效（可能在别处登录，或口令被修改），请重新登录。'
+        me.value = null
+        saveToken('')
+        return
+      }
       listError.value = list.error || '加载失败'
       return
     }
@@ -422,7 +440,14 @@ async function createUser() {
   }
 }
 
-function askReset(u) { pendingUser.value = { mode: 'reset', user: u, secret: '' } }
+function askReset(u) {
+  if (!canReset(u)) {
+    userErr.value = true
+    userMsg.value = '只能重置自己的口令（其他超级管理员不行）'
+    return
+  }
+  pendingUser.value = { mode: 'reset', user: u, secret: '' }
+}
 function askDeleteUser(u) {
   if (u.protected) return
   pendingUser.value = { mode: 'delete', user: u }
@@ -492,8 +517,21 @@ async function confirmUser() {
     if (p.mode === 'reset') {
       const r = await adminApi.resetUserSecret(p.user.id, p.secret)
       if (!r.ok) { userErr.value = true; userMsg.value = r.error || '重置失败'; return }
-      userMsg.value = `已重置「${p.user.username}」的口令`
+      const wasSelf = !!(me.value && p.user.id === me.value.id)
       delete revealHint[p.user.id]
+      /* 改自己的口令会把自己也踢下线（后端作废该账号全部会话），直接回登录页 */
+      if (wasSelf) {
+        pendingUser.value = null
+        userErr.value = false
+        sessionNotice.value = '口令已修改，请用新口令重新登录。'
+        saveToken('')
+        tk.value = ''
+        me.value = null
+        items.value = []
+        users.value = []
+        return
+      }
+      userMsg.value = `已重置「${p.user.username}」的口令，该账号已登录的会话已失效`
       revealed[p.user.id] = p.secret
     } else {
       const r = await adminApi.deleteUser(p.user.id)

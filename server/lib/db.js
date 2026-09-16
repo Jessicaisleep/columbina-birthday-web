@@ -396,6 +396,18 @@ async function deleteSession(tk) {
   await get().query('DELETE FROM admin_sessions WHERE tk = ?', [tk]);
 }
 
+/**
+ * 吊销某个账号的会话。
+ * exceptTk：把当前这条排除在外（单点登录时用，新登录的会话自己不能被剔掉）。
+ * 不传 exceptTk 就是全清（改口令后要求重新登录时用）。
+ */
+async function revokeUserSessions(userId, exceptTk = null) {
+  const [res] = exceptTk
+    ? await get().query('DELETE FROM admin_sessions WHERE user_id = ? AND tk <> ?', [userId, exceptTk])
+    : await get().query('DELETE FROM admin_sessions WHERE user_id = ?', [userId]);
+  return res.affectedRows || 0;
+}
+
 async function purgeSessions() {
   const [res] = await get().query('DELETE FROM admin_sessions WHERE expires_at <= ?', [now()]);
   return res.affectedRows || 0;
@@ -409,5 +421,5 @@ module.exports = {
   listForAdmin, adminStats, setFavorite, hardDeleteSubmission,
   countAdmins, listAdminUsers, getAdminUserById, getAdminUserByName, createAdminUser,
   updateAdminSecret, touchAdminLogin, deleteAdminUser, countSupers,
-  createSession, getSession, deleteSession, purgeSessions,
+  createSession, getSession, deleteSession, purgeSessions, revokeUserSessions,
 };
