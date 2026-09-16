@@ -22,6 +22,7 @@ const fs = require('fs');
 const path = require('path');
 const db = require('./lib/db');
 const up = require('./lib/upload');
+const auth = require('./lib/auth');
 const { validateSubmission } = require('./lib/validate');
 
 const cfg = db.loadConfig();
@@ -96,14 +97,26 @@ function readAdminSecret() {
   try { return db.readAdminSecret(cfg); } catch (e) { return ''; }
 }
 
-function isAdmin(req, url) {
-  const want = readAdminSecret();
-  if (!want) return false;
-  const got = url.searchParams.get('tk') || req.headers['x-admin-key'] || '';
-  if (got.length !== want.length) return false;
-  let diff = 0;
-  for (let i = 0; i < want.length; i++) diff |= want.charCodeAt(i) ^ got.charCodeAt(i);
-  return diff === 0;
+/**
+ * 管理端鉴权：
+ * - 配置里的总秘钥（adminSecretFile）→ 视为 super，供运维/脚本使用
+ * - 登录后拿到的会话串（请求头 X-Admin-Key，或 ?tk= 兼容写法）→ 按库里的角色
+ * 返回 { ok, role, username, viaMaster, tk }
+ */
+async function resolveAuth(req, url) {
+  const got = String(url.searchParams.get('tk') || req.headers['x-admin-key'] || '');
+  if (!got) return { ok: false };
+
+  const master = readAdminSecret();
+  if (master && auth.sameSecret(got, master)) {
+    return { ok: true, role: 'super', username: 'master', viaMaster: true };
+  }
+
+  const sess = await db.getSession(got);
+  if (!sess) return { ok: false };
+  const u = await db.getAdminUserById(sess.user_id);
+  if (!u) { await db.deleteSession(got); return { ok: false }; }
+  return { ok: true, role: u.role, username: u.username, userId: u.id, viaMaster: false, tk: got };
 }
 
 /* MySQL 的 JSON 列经 mysql2 回来已经是对象，兼容字符串与 null 两种情况 */
@@ -313,6 +326,8 @@ function rowToJson(row, withContact) {
     previewType: row.preview_type,
     previewLink: row.preview_link,
     agreed: !!row.agreed,
+    favorite: !!row.favorite,
+    favoritedAt: row.favorited_at,
     createdAt: row.created_at,
   };
   if (withContact) {
@@ -326,32 +341,107 @@ function rowToJson(row, withContact) {
   return out;
 }
 
+function fileToJson(f) {
+  return { id: f.id, name: f.original_name, size: Number(f.size), mime: f.mime, createdAt: f.created_at };
+}
+
+/* ---------------- 登录 ---------------- */
+
+async function handleLogin(req, res) {
+  const body = await readJsonBody(req);
+  const username = String(body.username || '').trim();
+  const secret = String(body.secret || '');
+  const ip = clientIp(req);
+  const throttleKey = `${ip}|${username.toLowerCase()}`;
+
+  if (auth.tooManyAttempts(throttleKey, 8, 15 * 60 * 1000)) {
+    return json(res, 429, { ok: false, error: '尝试次数过多，请 15 分钟后再试' });
+  }
+  if (!username || !secret) {
+    return json(res, 400, { ok: false, error: '请填写账号与口令' });
+  }
+
+  const user = await db.getAdminUserByName(username);
+  if (!user || !auth.verifySecret(secret, user.salt, user.hash)) {
+    auth.noteFailure(throttleKey, 15 * 60 * 1000);
+    return json(res, 401, { ok: false, error: '账号或口令不正确' });
+  }
+
+  auth.clearFailures(throttleKey);
+  const tk = auth.newId(32);
+  const ttl = auth.sessionTtlMs(cfg);
+  await db.createSession({ tk, userId: user.id, role: user.role, expiresAt: new Date(Date.now() + ttl) });
+  await db.touchAdminLogin(user.id);
+  return json(res, 200, {
+    ok: true, tk, role: user.role, username: user.username, expiresAt: new Date(Date.now() + ttl).toISOString(),
+  });
+}
+
+async function handleLogout(req, res, me) {
+  if (me.tk) await db.deleteSession(me.tk);
+  return json(res, 200, { ok: true });
+}
+
+async function handleMe(req, res, me) {
+  return json(res, 200, { ok: true, username: me.username, role: me.role, viaMaster: !!me.viaMaster });
+}
+
+/* ---------------- 投稿列表 / 详情 ---------------- */
+
 async function handleAdminList(req, res, url) {
   const limit = Math.min(Math.max(Number(url.searchParams.get('limit') || 50), 1), 200);
   const offset = Math.max(Number(url.searchParams.get('offset') || 0), 0);
-  const rows = await db.listSubmissions(limit, offset);
-  const total = await db.countSubmissions();
+  const filter = String(url.searchParams.get('filter') || 'all');
+  const q = String(url.searchParams.get('q') || '').trim().slice(0, 60);
+  const { rows, total } = await db.listForAdmin({ filter, q, limit, offset });
   const items = [];
   for (const r of rows) {
     const files = await db.filesOf(r.id);
-    items.push({
-      ...rowToJson(r, true),
-      files: files.map((f) => ({ id: f.id, name: f.original_name, size: Number(f.size) })),
-    });
+    items.push({ ...rowToJson(r, true), files: files.map(fileToJson) });
   }
-  return json(res, 200, { ok: true, total, limit, offset, items });
+  return json(res, 200, { ok: true, total, limit, offset, filter, q, items });
+}
+
+async function handleAdminStats(req, res) {
+  const stats = await db.adminStats();
+  return json(res, 200, { ok: true, stats });
 }
 
 async function handleAdminDetail(req, res, id) {
   const row = await db.getSubmission(id);
   if (!row) return json(res, 404, { ok: false, error: '投稿不存在' });
   const files = await db.filesOf(id);
+  return json(res, 200, { ok: true, item: { ...rowToJson(row, true), files: files.map(fileToJson) } });
+}
+
+async function handleFavorite(req, res, id) {
+  const body = await readJsonBody(req);
+  const row = await db.getSubmission(id);
+  if (!row) return json(res, 404, { ok: false, error: '投稿不存在' });
+  const want = body.favorite === undefined ? !row.favorite : !!body.favorite;
+  await db.setFavorite(id, want);
+  return json(res, 200, { ok: true, id, favorite: want });
+}
+
+/** 硬删除：投稿行、附件记录、磁盘上的附件文件全部真删，不留任何软删标记 */
+async function handleDelete(req, res, id) {
+  const row = await db.getSubmission(id);
+  if (!row) return json(res, 404, { ok: false, error: '投稿不存在' });
+  const { deleted, files } = await db.hardDeleteSubmission(id);
+  const removed = [];
+  for (const f of files) {
+    if (!f.stored_path) continue;
+    try {
+      await fs.promises.rm(f.stored_path, { force: true });
+      removed.push(f.original_name);
+    } catch (e) {
+      console.error('[delete] 附件删除失败', f.stored_path, e && e.message);
+    }
+  }
+  console.log(`[admin] 硬删除投稿 ${id}（附件 ${removed.length} 个）`);
   return json(res, 200, {
-    ok: true,
-    item: {
-      ...rowToJson(row, true),
-      files: files.map((f) => ({ id: f.id, name: f.original_name, size: Number(f.size) })),
-    },
+    ok: true, id, deleted, removedFiles: removed,
+    title: row.title, contact: `${row.contact_type} / ${row.contact_value}`,
   });
 }
 
@@ -369,19 +459,98 @@ async function handleAdminFile(req, res, id) {
   fs.createReadStream(f.stored_path).pipe(res);
 }
 
+/* ---------------- 管理员账号（仅 super） ---------------- */
+
+async function handleUsersList(req, res) {
+  const rows = await db.listAdminUsers();
+  return json(res, 200, {
+    ok: true,
+    items: rows.map((u) => ({
+      id: u.id, username: u.username, role: u.role,
+      createdAt: u.created_at, createdBy: u.created_by, lastLoginAt: u.last_login_at,
+    })),
+  });
+}
+
+async function handleUserCreate(req, res, me) {
+  const body = await readJsonBody(req);
+  const username = String(body.username || '').trim();
+  const secret = String(body.secret || '');
+  const role = body.role === 'super' ? 'super' : 'admin';
+
+  if (!auth.validUsername(username)) {
+    return json(res, 400, { ok: false, error: '账号需 4–32 位，字母开头，只能含字母/数字/下划线/短横线' });
+  }
+  if (!auth.validSecret(secret)) {
+    return json(res, 400, { ok: false, error: '口令至少 8 位，且不能是纯数字' });
+  }
+  if (await db.getAdminUserByName(username)) {
+    return json(res, 409, { ok: false, error: '该账号已存在' });
+  }
+
+  const salt = auth.newSalt();
+  const row = {
+    id: auth.newId(16), username, salt,
+    hash: auth.hashSecret(secret, salt), role,
+    createdBy: me.viaMaster ? 'master' : me.username,
+  };
+  await db.createAdminUser(row);
+  return json(res, 201, {
+    ok: true, user: { id: row.id, username, role, createdAt: new Date().toISOString() },
+  });
+}
+
+async function handleUserSecret(req, res, id) {
+  const body = await readJsonBody(req);
+  const secret = String(body.secret || '');
+  if (!auth.validSecret(secret)) {
+    return json(res, 400, { ok: false, error: '口令至少 8 位，且不能是纯数字' });
+  }
+  const u = await db.getAdminUserById(id);
+  if (!u) return json(res, 404, { ok: false, error: '账号不存在' });
+  const salt = auth.newSalt();
+  await db.updateAdminSecret(id, salt, auth.hashSecret(secret, salt));
+  return json(res, 200, { ok: true, id, username: u.username });
+}
+
+async function handleUserDelete(req, res, me, id) {
+  const u = await db.getAdminUserById(id);
+  if (!u) return json(res, 404, { ok: false, error: '账号不存在' });
+  if (!me.viaMaster && me.userId === id) {
+    return json(res, 400, { ok: false, error: '不能删除自己' });
+  }
+  if (u.role === 'super' && (await db.countSupers(id)) === 0) {
+    return json(res, 400, { ok: false, error: '至少要保留一个超级管理员' });
+  }
+  await db.deleteAdminUser(id);
+  return json(res, 200, { ok: true, id, username: u.username });
+}
+
 /* ------------------------------------------------------------ 路由 */
 
 const ROUTES = [
-  ['GET', /^\/api\/health\/?$/, async (req, res) => json(res, 200, { ok: true, service: 'columbina-birthday', time: new Date().toISOString() })],
-  ['POST', /^\/api\/uploads\/?$/, handleUploadsCreate],
-  ['GET', /^\/api\/uploads\/([a-f0-9]{32})\/?$/, async (req, res, m) => handleUploadStatus(req, res, m[1])],
-  ['PUT', /^\/api\/uploads\/([a-f0-9]{32})\/chunk\/(\d+)\/?$/, async (req, res, m) => handleUploadChunk(req, res, m[1], Number(m[2]))],
-  ['POST', /^\/api\/uploads\/([a-f0-9]{32})\/complete\/?$/, async (req, res, m) => handleUploadComplete(req, res, m[1])],
-  ['POST', /^\/api\/submissions\/?$/, handleSubmit],
-  ['GET', /^\/api\/submissions\/([a-f0-9]{32})\/?$/, async (req, res, m) => handleSubmissionReceipt(req, res, m[1])],
-  ['GET', /^\/api\/admin\/submissions\/?$/, async (req, res, m, url) => handleAdminList(req, res, url)],
-  ['GET', /^\/api\/admin\/submissions\/([a-f0-9]{32})\/?$/, async (req, res, m) => handleAdminDetail(req, res, m[1])],
-  ['GET', /^\/api\/admin\/files\/([a-f0-9]{32})\/?$/, async (req, res, m) => handleAdminFile(req, res, m[1])],
+  ['GET', /^\/api\/health\/?$/, async (req, res) => json(res, 200, { ok: true, service: 'columbina-birthday', time: new Date().toISOString() }), null],
+  ['POST', /^\/api\/uploads\/?$/, handleUploadsCreate, null],
+  ['GET', /^\/api\/uploads\/([a-f0-9]{32})\/?$/, async (req, res, m) => handleUploadStatus(req, res, m[1]), null],
+  ['PUT', /^\/api\/uploads\/([a-f0-9]{32})\/chunk\/(\d+)\/?$/, async (req, res, m) => handleUploadChunk(req, res, m[1], Number(m[2])), null],
+  ['POST', /^\/api\/uploads\/([a-f0-9]{32})\/complete\/?$/, async (req, res, m) => handleUploadComplete(req, res, m[1]), null],
+  ['POST', /^\/api\/submissions\/?$/, handleSubmit, null],
+  ['GET', /^\/api\/submissions\/([a-f0-9]{32})\/?$/, async (req, res, m) => handleSubmissionReceipt(req, res, m[1]), null],
+
+  /* 管理端 */
+  ['POST', /^\/api\/admin\/login\/?$/, handleLogin, null],
+  ['POST', /^\/api\/admin\/logout\/?$/, async (req, res, m, url, me) => handleLogout(req, res, me), 'session'],
+  ['GET', /^\/api\/admin\/me\/?$/, async (req, res, m, url, me) => handleMe(req, res, me), 'session'],
+  ['GET', /^\/api\/admin\/stats\/?$/, handleAdminStats, 'session'],
+  ['GET', /^\/api\/admin\/submissions\/?$/, async (req, res, m, url) => handleAdminList(req, res, url), 'session'],
+  ['GET', /^\/api\/admin\/submissions\/([a-f0-9]{32})\/?$/, async (req, res, m) => handleAdminDetail(req, res, m[1]), 'session'],
+  ['POST', /^\/api\/admin\/submissions\/([a-f0-9]{32})\/favorite\/?$/, async (req, res, m) => handleFavorite(req, res, m[1]), 'session'],
+  ['DELETE', /^\/api\/admin\/submissions\/([a-f0-9]{32})\/?$/, async (req, res, m) => handleDelete(req, res, m[1]), 'session'],
+  ['GET', /^\/api\/admin\/files\/([a-f0-9]{32})\/?$/, async (req, res, m) => handleAdminFile(req, res, m[1]), 'session'],
+  ['GET', /^\/api\/admin\/users\/?$/, handleUsersList, 'super'],
+  ['POST', /^\/api\/admin\/users\/?$/, async (req, res, m, url, me) => handleUserCreate(req, res, me), 'super'],
+  ['POST', /^\/api\/admin\/users\/([a-f0-9]{32})\/secret\/?$/, async (req, res, m) => handleUserSecret(req, res, m[1]), 'super'],
+  ['DELETE', /^\/api\/admin\/users\/([a-f0-9]{32})\/?$/, async (req, res, m, url, me) => handleUserDelete(req, res, me, m[1]), 'super'],
 ];
 
 const server = http.createServer(async (req, res) => {
@@ -395,14 +564,19 @@ const server = http.createServer(async (req, res) => {
   }
 
   try {
-    for (const [method, re, fn] of ROUTES) {
+    for (const [method, re, fn, level] of ROUTES) {
       const m = re.exec(p);
       if (!m) continue;
       if (req.method !== method) continue;
-      if (p.startsWith('/api/admin/') && !isAdmin(req, url)) {
-        return json(res, 403, { ok: false, error: '需要管理秘钥' });
+      let me = null;
+      if (level) {
+        me = await resolveAuth(req, url);
+        if (!me.ok) return json(res, 401, { ok: false, error: '未登录或登录已过期' });
+        if (level === 'super' && me.role !== 'super') {
+          return json(res, 403, { ok: false, error: '需要超级管理员权限' });
+        }
       }
-      return await fn(req, res, m, url);
+      return await fn(req, res, m, url, me);
     }
     return json(res, 404, { ok: false, error: 'not found' });
   } catch (e) {
@@ -414,16 +588,38 @@ const server = http.createServer(async (req, res) => {
 
 /* ------------------------------------------------------------ 启动 */
 
+/** 库里一个账号都没有时，建一个超级管理员，随机口令写在 data/admin-init.txt（600） */
+async function ensureSuperAdmin() {
+  const n = await db.countAdmins();
+  if (n > 0) return;
+  const username = String((cfg.initAdmin && cfg.initAdmin.username) || 'admin');
+  const secret = auth.newId(12);
+  const salt = auth.newSalt();
+  await db.createAdminUser({
+    id: auth.newId(16), username, salt,
+    hash: auth.hashSecret(secret, salt), role: 'super', createdBy: 'system',
+  });
+  const p = path.join(DATA_DIR, 'admin-init.txt');
+  fs.writeFileSync(
+    p,
+    `账号：${username}\n口令：${secret}\n创建时间：${new Date().toISOString()}\n（首次登录后请在后台改掉）\n`,
+    { mode: 0o600 }
+  );
+  console.log(`[init] 已创建超级管理员「${username}」，初始口令写在 ${p}（600 权限）`);
+}
+
 async function main() {
   fs.mkdirSync(DATA_DIR, { recursive: true });
   up.initDirs(DATA_DIR);
   await db.init();
+  await ensureSuperAdmin();
   const retentionDays = Number(cfg.retentionDays || 7);
   const sweep = async () => {
     try {
       const r = await up.cleanup(DATA_DIR, retentionDays * 86400 * 1000);
       const stale = await db.staleUploads(new Date(Date.now() - retentionDays * 86400 * 1000));
       for (const s of stale) if (s.state === 'open') await db.dropUpload(s.id);
+      await db.purgeSessions();
       if (r.removedTmp) console.log(`[cleanup] 清理过期分片目录 ${r.removedTmp} 个`);
     } catch (e) {
       console.error('[cleanup] 失败', e && e.message);

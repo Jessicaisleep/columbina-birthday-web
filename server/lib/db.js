@@ -84,7 +84,43 @@ const SCHEMA = [
      updated_at DATETIME NOT NULL,
      KEY idx_updated (updated_at)
    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+
+  `CREATE TABLE IF NOT EXISTS admin_users (
+     id VARCHAR(32) NOT NULL PRIMARY KEY,
+     username VARCHAR(64) NOT NULL UNIQUE,
+     salt CHAR(32) NOT NULL,
+     hash CHAR(128) NOT NULL,
+     role VARCHAR(16) NOT NULL DEFAULT 'admin',
+     created_at DATETIME NOT NULL,
+     created_by VARCHAR(64) NULL,
+     last_login_at DATETIME NULL
+   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+
+  `CREATE TABLE IF NOT EXISTS admin_sessions (
+     tk CHAR(64) NOT NULL PRIMARY KEY,
+     user_id VARCHAR(32) NOT NULL,
+     role VARCHAR(16) NOT NULL,
+     created_at DATETIME NOT NULL,
+     expires_at DATETIME NOT NULL,
+     KEY idx_expires (expires_at)
+   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 ];
+
+/* 已有库的增量变更（CREATE TABLE IF NOT EXISTS 不会加列） */
+const MIGRATIONS = [
+  { table: 'submissions', column: 'favorite', sql: "ALTER TABLE submissions ADD COLUMN favorite TINYINT(1) NOT NULL DEFAULT 0" },
+  { table: 'submissions', column: 'favorited_at', sql: "ALTER TABLE submissions ADD COLUMN favorited_at DATETIME NULL" },
+];
+
+async function migrate() {
+  for (const m of MIGRATIONS) {
+    const [rows] = await pool.query(
+      'SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?',
+      [m.table, m.column]
+    );
+    if (!rows.length) await pool.query(m.sql);
+  }
+}
 
 async function init() {
   const cfg = loadConfig();
@@ -103,6 +139,7 @@ async function init() {
     bigNumberStrings: false,
   });
   for (const sql of SCHEMA) await pool.query(sql);
+  await migrate();
   return pool;
 }
 
@@ -191,7 +228,6 @@ const SUB_FIELDS = [
   'title', 'category', 'intro', 'duration', 'has_other_chars', 'other_chars',
   'progress', 'preview_type', 'preview_link', 'agreed', 'ip', 'ua', 'created_at',
 ];
-
 async function insertSubmission(row) {
   const cols = SUB_FIELDS.join(',');
   const marks = SUB_FIELDS.map(() => '?').join(',');
@@ -227,9 +263,145 @@ async function countRecentSubmissions(ip, since) {
   return Number(rows[0].n);
 }
 
+/* 管理端列表（可按收藏筛选 / 关键词搜索） */
+async function listForAdmin({ filter, q, limit, offset }) {
+  const where = [];
+  const args = [];
+  if (filter === 'favorite') where.push('favorite = 1');
+  if (filter === 'file') where.push("preview_type = 'file'");
+  if (q) {
+    where.push('(title LIKE ? OR intro LIKE ? OR contact_value LIKE ? OR nicknames LIKE ?)');
+    const like = `%${q}%`;
+    args.push(like, like, like, like);
+  }
+  const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  const [rows] = await get().query(
+    `SELECT * FROM submissions ${clause} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+    [...args, Number(limit), Number(offset)]
+  );
+  const [cnt] = await get().query(`SELECT COUNT(*) AS n FROM submissions ${clause}`, args);
+  return { rows, total: Number(cnt[0].n) };
+}
+
+async function adminStats() {
+  const [rows] = await get().query(
+    `SELECT COUNT(*) AS total,
+            SUM(favorite = 1) AS favorites,
+            SUM(preview_type = 'file') AS with_files,
+            SUM(created_at >= ?) AS last24h
+     FROM submissions`,
+    [new Date(Date.now() - 86400 * 1000)]
+  );
+  const r = rows[0] || {};
+  return {
+    total: Number(r.total || 0),
+    favorites: Number(r.favorites || 0),
+    withFiles: Number(r.with_files || 0),
+    last24h: Number(r.last24h || 0),
+  };
+}
+
+async function setFavorite(id, favorite) {
+  const [res] = await get().query(
+    'UPDATE submissions SET favorite = ?, favorited_at = ? WHERE id = ?',
+    [favorite ? 1 : 0, favorite ? now() : null, id]
+  );
+  return res.affectedRows;
+}
+
+/** 硬删除：直接删行（不留软删标记），附件与分片由调用方一并清掉 */
+async function hardDeleteSubmission(id) {
+  const files = await filesOf(id);
+  await get().query('DELETE FROM submission_files WHERE submission_id = ?', [id]);
+  const [res] = await get().query('DELETE FROM submissions WHERE id = ?', [id]);
+  return { deleted: res.affectedRows, files };
+}
+
+/* ------------------------------------------------------------ 管理员账号 / 登录态 */
+
+async function countAdmins() {
+  const [rows] = await get().query('SELECT COUNT(*) AS n FROM admin_users');
+  return Number(rows[0].n);
+}
+
+async function listAdminUsers() {
+  const [rows] = await get().query(
+    'SELECT id, username, role, created_at, created_by, last_login_at FROM admin_users ORDER BY created_at'
+  );
+  return rows;
+}
+
+async function getAdminUserById(id) {
+  const [rows] = await get().query('SELECT * FROM admin_users WHERE id = ? LIMIT 1', [id]);
+  return rows[0] || null;
+}
+
+async function getAdminUserByName(username) {
+  const [rows] = await get().query('SELECT * FROM admin_users WHERE username = ? LIMIT 1', [username]);
+  return rows[0] || null;
+}
+
+async function createAdminUser(row) {
+  await get().query(
+    `INSERT INTO admin_users (id, username, salt, hash, role, created_at, created_by)
+     VALUES (?,?,?,?,?,?,?)`,
+    [row.id, row.username, row.salt, row.hash, row.role, now(), row.createdBy || null]
+  );
+}
+
+async function updateAdminSecret(id, salt, hash) {
+  await get().query('UPDATE admin_users SET salt = ?, hash = ? WHERE id = ?', [salt, hash, id]);
+}
+
+async function touchAdminLogin(id) {
+  await get().query('UPDATE admin_users SET last_login_at = ? WHERE id = ?', [now(), id]);
+}
+
+async function deleteAdminUser(id) {
+  await get().query('DELETE FROM admin_sessions WHERE user_id = ?', [id]);
+  const [res] = await get().query('DELETE FROM admin_users WHERE id = ?', [id]);
+  return res.affectedRows;
+}
+
+async function countSupers(exceptId) {
+  const [rows] = await get().query(
+    "SELECT COUNT(*) AS n FROM admin_users WHERE role = 'super' AND id <> ?",
+    [exceptId || '']
+  );
+  return Number(rows[0].n);
+}
+
+async function createSession(row) {
+  await get().query(
+    'INSERT INTO admin_sessions (tk, user_id, role, created_at, expires_at) VALUES (?,?,?,?,?)',
+    [row.tk, row.userId, row.role, now(), row.expiresAt]
+  );
+}
+
+async function getSession(tk) {
+  const [rows] = await get().query(
+    'SELECT * FROM admin_sessions WHERE tk = ? AND expires_at > ? LIMIT 1',
+    [tk, now()]
+  );
+  return rows[0] || null;
+}
+
+async function deleteSession(tk) {
+  await get().query('DELETE FROM admin_sessions WHERE tk = ?', [tk]);
+}
+
+async function purgeSessions() {
+  const [res] = await get().query('DELETE FROM admin_sessions WHERE expires_at <= ?', [now()]);
+  return res.affectedRows || 0;
+}
+
 module.exports = {
   loadConfig, readAdminSecret, init, get, now,
   createUpload, getUpload, touchUpload, findUploadByNameSize, staleUploads, dropUpload,
   insertFile, getFile, attachFiles, filesOf,
   insertSubmission, getSubmission, listSubmissions, countSubmissions, countRecentSubmissions,
+  listForAdmin, adminStats, setFavorite, hardDeleteSubmission,
+  countAdmins, listAdminUsers, getAdminUserById, getAdminUserByName, createAdminUser,
+  updateAdminSecret, touchAdminLogin, deleteAdminUser, countSupers,
+  createSession, getSession, deleteSession, purgeSessions,
 };

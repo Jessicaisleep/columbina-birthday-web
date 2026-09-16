@@ -8,6 +8,9 @@
   <template v-if="view === 'signup'">
     <SubmitPage @back="go('home')" />
   </template>
+  <template v-else-if="view === 'admin'">
+    <AdminPage @back="go('home')" />
+  </template>
   <template v-else>
     <HeroSection />
     <IntroSection />
@@ -36,18 +39,20 @@ import SiteFooter from './components/SiteFooter.vue'
 import JoinModal from './components/JoinModal.vue'
 import LandscapeGate from './components/LandscapeGate.vue'
 import SubmitPage from './components/SubmitPage.vue'
+import AdminPage from './components/AdminPage.vue'
 
 const joinOpen = ref(false)
 
-/* 页面内切换首页 / 报名页（不跳新标签页），用 hash 记录，刷新和后退都能回到原处 */
-const SIGNUP_HASH = '#/signup'
-const view = ref(window.location.hash === SIGNUP_HASH ? 'signup' : 'home')
+/* 页面内切换：首页 / 报名页 / 管理后台（都用 hash 记录，刷新和后退都能回到原处） */
+const VIEW_HASH = { signup: '#/signup', admin: '#/admin' }
+const HASH_VIEW = { '#/signup': 'signup', '#/admin': 'admin' }
+const view = ref(HASH_VIEW[window.location.hash] || 'home')
 
 function go(next) {
   view.value = next
-  const want = next === 'signup' ? SIGNUP_HASH : ''
+  const want = VIEW_HASH[next] || ''
   if (window.location.hash !== want) {
-    if (next === 'signup') window.location.hash = SIGNUP_HASH
+    if (want) window.location.hash = want
     else window.history.replaceState(null, '', window.location.pathname + window.location.search)
   }
   if (next === 'home') nextTick(observeReveals)
@@ -55,7 +60,7 @@ function go(next) {
 }
 
 function onHashChange() {
-  const want = window.location.hash === SIGNUP_HASH ? 'signup' : 'home'
+  const want = HASH_VIEW[window.location.hash] || 'home'
   if (want !== view.value) {
     view.value = want
     if (want === 'home') nextTick(observeReveals)
