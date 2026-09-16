@@ -734,7 +734,9 @@ option{background:#0a0f1e;color:var(--ink)}
 .subs{list-style:none;display:flex;flex-direction:column;gap:12px}
 .subs li{display:flex;gap:16px;align-items:center;justify-content:space-between;padding:16px 18px;border:1px solid var(--line);border-radius:14px;background:rgba(10,15,30,.5);transition:border-color .3s}
 .subs li.fav{border-color:rgba(230,200,138,.45);background:rgba(230,200,138,.05)}
-.sub-main{min-width:0}
+/* flex:1 很重要：行里有三个子元素（复选框 / 内容 / 按钮），
+   如果内容不抢宽，justify-content:space-between 会把它摆到正中间 */
+.sub-main{flex:1;min-width:0}
 .sub-title{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .sub-title .t{font-family:var(--serif);font-size:16px;letter-spacing:.04em}
 .chip{font-size:11px;letter-spacing:.06em;padding:3px 10px;border-radius:99px;border:1px solid rgba(157,184,232,.28);color:var(--blue)}
@@ -802,6 +804,7 @@ option{background:#0a0f1e;color:var(--ink)}
   .card{padding:26px 20px}
   .stats{grid-template-columns:1fr 1fr}
   .subs li{flex-direction:column;align-items:flex-start;gap:12px}
+  .sub-main{flex:0 0 auto;width:100%}
   .sub-ops{width:100%}
   .sub-ops .mini{flex:1}
   .user-form{grid-template-columns:1fr}
