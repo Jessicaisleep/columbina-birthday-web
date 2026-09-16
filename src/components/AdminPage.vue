@@ -48,16 +48,39 @@
         </div>
 
         <div class="toolbar">
-          <input v-model.trim="q" class="search" placeholder="搜索单品名称 / 简介 / 联系方式 / 昵称" @keydown.enter="refresh" />
-          <button class="mini" type="button" @click="refresh" :disabled="loading">{{ loading ? '加载中…' : '搜索 / 刷新' }}</button>
+          <input v-model.trim="q" class="search" placeholder="搜索单品名称 / 简介 / 联系方式 / 昵称" @keydown.enter="searchNow" />
+          <button class="mini" type="button" @click="searchNow" :disabled="loading">{{ loading ? '加载中…' : '搜索 / 刷新' }}</button>
+          <label class="psize">每页
+            <select :value="pageSize" @change="changePageSize(Number($event.target.value))">
+              <option v-for="n in [10, 20, 50]" :key="n" :value="n">{{ n }}</option>
+            </select>
+          </label>
         </div>
 
         <p v-if="listError" class="err">{{ listError }}</p>
 
         <div v-if="!items.length && !loading" class="empty">还没有符合条件的投稿。</div>
 
+        <div v-if="items.length" class="bulkbar">
+          <label class="pick">
+            <input type="checkbox" :checked="pageAllSelected" :indeterminate.prop="pageIndeterminate" @change="toggleSelectAll($event.target.checked)" />
+            全选本页（{{ items.length }} 条）
+          </label>
+          <span class="dim">已选 {{ selectedCount }} 项</span>
+          <span v-if="bulkMsg" class="dim">{{ bulkMsg }}</span>
+          <span class="spacer"></span>
+          <button class="mini" type="button" :disabled="!selectedCount || bulkBusy" @click="bulkFavorite(true)">收藏</button>
+          <button class="mini" type="button" :disabled="!selectedCount || bulkBusy" @click="bulkFavorite(false)">取消收藏</button>
+          <button class="mini danger" type="button" :disabled="!selectedCount || bulkBusy" @click="pendingBulkDelete = true">删除</button>
+          <button class="mini ghost" type="button" :disabled="!selectedCount || bulkBusy" @click="clearSelection">清空选择</button>
+        </div>
+
         <ul v-if="items.length" class="subs">
-          <li v-for="it in items" :key="it.id" :class="{ fav: it.favorite }">
+          <li v-for="it in items" :key="it.id" :class="{ fav: it.favorite, picked: !!selected[it.id] }">
+            <label class="pick row-pick" :title="selected[it.id] ? '取消选择' : '选择这条'">
+              <input type="checkbox" :checked="!!selected[it.id]" @change="toggleSelect(it, $event.target.checked)" />
+              <span class="sr-only">选择 {{ it.title }}</span>
+            </label>
             <div class="sub-main">
               <div class="sub-title">
                 <button class="star" :class="{ on: it.favorite }" type="button" :title="it.favorite ? '取消收藏' : '收藏'" @click="toggleFav(it)">
@@ -81,8 +104,10 @@
           </li>
         </ul>
 
-        <div v-if="total > items.length" class="more">
-          <button class="mini" type="button" :disabled="loading" @click="loadMore">加载更多（已显示 {{ items.length }} / {{ total }}）</button>
+        <div v-if="total > 0" class="pager">
+          <button class="mini" type="button" :disabled="page <= 1 || loading" @click="goPage(page - 1)">← 上一页</button>
+          <span class="dim">第 {{ page }} / {{ pageCount }} 页 · 共 {{ total }} 条</span>
+          <button class="mini" type="button" :disabled="page >= pageCount || loading" @click="goPage(page + 1)">下一页 →</button>
         </div>
 
         <!-- 账号管理（仅超级管理员） -->
@@ -201,6 +226,23 @@
       </div>
     </div>
 
+    <!-- 批量删除确认 -->
+    <div v-if="pendingBulkDelete" class="modal open" role="dialog" aria-modal="true" @click.self="pendingBulkDelete = false">
+      <div class="modal-card">
+        <h3>批量删除</h3>
+        <p class="del-target">已选中 {{ selectedCount }} 条投稿</p>
+        <p class="del-warn">这些投稿和它们的附件都会被<strong>彻底删除</strong>，无法恢复。</p>
+        <ul class="del-list">
+          <li v-for="(title, id) in selectedPreview" :key="id">{{ title }}</li>
+          <li v-if="selectedCount > selectedPreview.length">…还有 {{ selectedCount - selectedPreview.length }} 条</li>
+        </ul>
+        <div class="modal-actions">
+          <button class="btn small danger" type="button" :disabled="bulkBusy" @click="confirmBulkDelete">{{ bulkBusy ? '删除中…' : '确认删除' }}</button>
+          <button class="btn small ghost" type="button" @click="pendingBulkDelete = false">取消</button>
+        </div>
+      </div>
+    </div>
+
     <!-- 重置口令 / 删账号确认 -->
     <div v-if="pendingUser" class="modal open" role="dialog" aria-modal="true" @click.self="pendingUser = null">
       <div class="modal-card">
@@ -234,6 +276,17 @@ const filter = ref('all')
 const q = ref('')
 const loading = ref(false)
 const listError = ref('')
+
+/* 分页：每页 10 / 20 / 50 可选 */
+const PAGE_SIZES = [10, 20, 50]
+const pageSize = ref(20)
+const page = ref(1)
+
+/* 多选：id -> 标题，跳页也保留 */
+const selected = reactive({})
+const bulkBusy = ref(false)
+const bulkMsg = ref('')
+const pendingBulkDelete = ref(false)
 
 const loginForm = reactive({ username: '', secret: '' })
 const logging = ref(false)
@@ -337,6 +390,8 @@ async function doLogout() {
   items.value = []
   users.value = []
   detail.value = null
+  page.value = 1
+  clearSelection()
 }
 
 /* ---------------- 列表 ---------------- */
@@ -345,7 +400,10 @@ async function refresh() {
   loading.value = true
   listError.value = ''
   try {
-    const [list, st] = await Promise.all([adminApi.list({ filter: filter.value, q: q.value, limit: 50 }), adminApi.stats()])
+    const [list, st] = await Promise.all([
+      adminApi.list({ filter: filter.value, q: q.value, limit: pageSize.value, offset: (page.value - 1) * pageSize.value }),
+      adminApi.stats(),
+    ])
     if (!list.ok) {
       if (list.status === 401) {
         sessionNotice.value = '会话已失效（可能在别处登录，或口令被修改），请重新登录。'
@@ -364,18 +422,31 @@ async function refresh() {
   }
 }
 
-async function loadMore() {
-  loading.value = true
-  try {
-    const list = await adminApi.list({ filter: filter.value, q: q.value, limit: 50, offset: items.value.length })
-    if (list.ok) items.value = items.value.concat(list.items || [])
-  } finally {
-    loading.value = false
-  }
+function searchNow() {
+  page.value = 1
+  refresh()
+}
+
+function goPage(p) {
+  const next = Math.min(Math.max(1, Number(p) || 1), pageCount.value)
+  if (next === page.value) return
+  page.value = next
+  refresh()
+}
+
+function changePageSize(n) {
+  const size = PAGE_SIZES.includes(Number(n)) ? Number(n) : 20
+  if (size === pageSize.value) return
+  pageSize.value = size
+  page.value = 1
+  bulkMsg.value = ''
+  refresh()
 }
 
 function setFilter(f) {
   filter.value = f
+  page.value = 1
+  bulkMsg.value = ''
   refresh()
 }
 
@@ -407,10 +478,83 @@ async function doDelete() {
     if (target.favorite) stats.favorites = Math.max(0, stats.favorites - 1)
     if (target.files && target.files.length) stats.withFiles = Math.max(0, stats.withFiles - 1)
     total.value = Math.max(0, total.value - 1)
+    delete selected[target.id]
     if (detail.value && detail.value.id === target.id) detail.value = null
     pendingDelete.value = null
+    /* 删完把当前页补满（最后一页删空就回退一页） */
+    if (!items.value.length && page.value > 1) page.value -= 1
+    await refresh()
   } finally {
     deleting.value = false
+  }
+}
+
+/* ---------------- 多选与批量操作 ---------------- */
+
+const selectedIds = computed(() => Object.keys(selected))
+const selectedCount = computed(() => selectedIds.value.length)
+const pageCount = computed(() => Math.max(1, Math.ceil((total.value || 0) / pageSize.value)))
+const pageAllSelected = computed(() => items.value.length > 0 && items.value.every((it) => !!selected[it.id]))
+const pageIndeterminate = computed(() => !pageAllSelected.value && items.value.some((it) => !!selected[it.id]))
+const selectedPreview = computed(() => selectedIds.value.slice(0, 6).map((id) => selected[id]))
+
+function toggleSelect(it, checked) {
+  if (checked) selected[it.id] = it.title
+  else delete selected[it.id]
+}
+
+/* 全选（本页）。跳页后选择还在，可以攒着一起处理 */
+function toggleSelectAll(checked) {
+  for (const it of items.value) {
+    if (checked) selected[it.id] = it.title
+    else delete selected[it.id]
+  }
+}
+
+function clearSelection() {
+  for (const id of Object.keys(selected)) delete selected[id]
+  bulkMsg.value = ''
+}
+
+async function bulkFavorite(want) {
+  const ids = selectedIds.value
+  if (!ids.length) return
+  bulkBusy.value = true
+  bulkMsg.value = ''
+  try {
+    const r = await adminApi.bulkFavorite(ids, want)
+    if (!r.ok) { listError.value = r.error || '批量操作失败'; return }
+    const done = new Set(r.ids || [])
+    for (const it of items.value) if (done.has(it.id)) it.favorite = want
+    if (detail.value && done.has(detail.value.id)) detail.value.favorite = want
+    stats.favorites = Math.max(0, stats.favorites + (want ? 1 : -1) * done.size)
+    clearSelection()
+    bulkMsg.value = `${want ? '已收藏' : '已取消收藏'} ${done.size} 条`
+    if (filter.value === 'favorite' && !want) await refresh()
+  } finally {
+    bulkBusy.value = false
+  }
+}
+
+async function confirmBulkDelete() {
+  const ids = selectedIds.value
+  if (!ids.length) return
+  bulkBusy.value = true
+  try {
+    const r = await adminApi.bulkDelete(ids)
+    if (!r.ok) { listError.value = r.error || '批量删除失败'; pendingBulkDelete.value = false; return }
+    const done = new Set(r.ids || [])
+    items.value = items.value.filter((x) => !done.has(x.id))
+    total.value = Math.max(0, total.value - done.size)
+    stats.total = Math.max(0, stats.total - done.size)
+    if (detail.value && done.has(detail.value.id)) detail.value = null
+    clearSelection()
+    pendingBulkDelete.value = false
+    bulkMsg.value = `已删除 ${done.size} 条`
+    if (!items.value.length && page.value > 1) page.value -= 1
+    await refresh()
+  } finally {
+    bulkBusy.value = false
   }
 }
 
@@ -602,6 +746,17 @@ option{background:#0a0f1e;color:var(--ink)}
 .star.on{color:var(--gold)}
 .star.big{font-size:14px;letter-spacing:.08em}
 .empty{text-align:center;color:var(--ink-faint);font-size:14px;padding:40px 0}
+.bulkbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:14px 0 10px;padding:10px 14px;border:1px solid var(--line);border-radius:12px;background:rgba(10,15,30,.45);font-size:12.5px}
+.bulkbar .spacer{flex:1}
+.pick{display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:12.5px;user-select:none}
+.pick input{width:15px;height:15px;accent-color:var(--gold);cursor:pointer;margin:0}
+.row-pick{flex:0 0 auto}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.subs li.picked{border-color:rgba(157,184,232,.6);background:rgba(157,184,232,.07)}
+.pager{display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;margin-top:18px;font-size:12.5px}
+.psize{display:inline-flex;align-items:center;gap:6px;color:var(--ink-faint);font-size:12.5px}
+.psize select{background:rgba(10,15,30,.6);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:6px 9px;font-size:12.5px}
+.del-list{margin:10px 0 0;padding-left:18px;font-size:12.5px;color:var(--ink-faint);max-height:150px;overflow:auto}
 .more{text-align:center;margin-top:18px}
 .hint{font-size:12.5px;color:var(--ink-faint);margin:8px 0 12px}
 .hint.err,.err{color:#eb9c9c}

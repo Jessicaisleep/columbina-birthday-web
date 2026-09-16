@@ -57,6 +57,8 @@ export const adminApi = {
   },
   detail(id) { return call(`/admin/submissions/${id}`) },
   setFavorite(id, favorite) { return call(`/admin/submissions/${id}/favorite`, { method: 'POST', body: { favorite } }) },
+  bulkFavorite(ids, favorite) { return call('/admin/submissions/batch/favorite', { method: 'POST', body: { ids, favorite } }) },
+  bulkDelete(ids) { return call('/admin/submissions/batch/delete', { method: 'POST', body: { ids } }) },
   remove(id) { return call(`/admin/submissions/${id}`, { method: 'DELETE' }) },
 
   users() { return call('/admin/users') },

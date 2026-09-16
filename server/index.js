@@ -454,6 +454,64 @@ async function handleDelete(req, res, id) {
   });
 }
 
+/* ---------------- 批量操作 ---------------- */
+
+const MAX_BATCH = 200;
+
+function pickIds(body) {
+  if (!Array.isArray(body.ids)) return [];
+  const seen = new Set();
+  return body.ids
+    .map((id) => String(id || ''))
+    .filter((id) => /^[a-f0-9]{32}$/.test(id) && !seen.has(id) && seen.add(id))
+    .slice(0, MAX_BATCH);
+}
+
+/** 批量收藏 / 取消收藏 */
+async function handleBatchFavorite(req, res) {
+  const body = await readJsonBody(req);
+  const ids = pickIds(body);
+  if (!ids.length) return json(res, 400, { ok: false, error: '没有选中任何单品' });
+  const want = body.favorite === undefined ? true : !!body.favorite;
+  const done = [];
+  const missing = [];
+  for (const id of ids) {
+    const row = await db.getSubmission(id);
+    if (!row) { missing.push(id); continue; }
+    await db.setFavorite(id, want);
+    done.push(id);
+  }
+  console.log(`[admin] 批量${want ? '收藏' : '取消收藏'} ${done.length} 条`);
+  return json(res, 200, { ok: true, favorite: want, updated: done.length, ids: done, missing });
+}
+
+/** 批量硬删除：投稿行 + 附件记录 + 磁盘附件一起真删 */
+async function handleBatchDelete(req, res) {
+  const body = await readJsonBody(req);
+  const ids = pickIds(body);
+  if (!ids.length) return json(res, 400, { ok: false, error: '没有选中任何单品' });
+  const done = [];
+  const missing = [];
+  const removedFiles = [];
+  for (const id of ids) {
+    const row = await db.getSubmission(id);
+    if (!row) { missing.push(id); continue; }
+    const { files } = await db.hardDeleteSubmission(id);
+    for (const f of files) {
+      if (!f.stored_path) continue;
+      try {
+        await fs.promises.rm(f.stored_path, { force: true });
+        removedFiles.push(f.original_name);
+      } catch (e) {
+        console.error('[delete] 附件删除失败', f.stored_path, e && e.message);
+      }
+    }
+    done.push(id);
+  }
+  console.log(`[admin] 批量硬删除投稿 ${done.length} 条（附件 ${removedFiles.length} 个）`);
+  return json(res, 200, { ok: true, deleted: done.length, ids: done, missing, removedFiles });
+}
+
 async function handleAdminFile(req, res, id) {
   const f = await db.getFile(id);
   if (!f || !f.stored_path) return json(res, 404, { ok: false, error: '附件不存在' });
@@ -598,6 +656,8 @@ const ROUTES = [
   ['GET', /^\/api\/admin\/stats\/?$/, handleAdminStats, 'session'],
   ['GET', /^\/api\/admin\/submissions\/?$/, async (req, res, m, url) => handleAdminList(req, res, url), 'session'],
   ['GET', /^\/api\/admin\/submissions\/([a-f0-9]{32})\/?$/, async (req, res, m) => handleAdminDetail(req, res, m[1]), 'session'],
+  ['POST', /^\/api\/admin\/submissions\/batch\/favorite\/?$/, handleBatchFavorite, 'session'],
+  ['POST', /^\/api\/admin\/submissions\/batch\/delete\/?$/, handleBatchDelete, 'session'],
   ['POST', /^\/api\/admin\/submissions\/([a-f0-9]{32})\/favorite\/?$/, async (req, res, m) => handleFavorite(req, res, m[1]), 'session'],
   ['DELETE', /^\/api\/admin\/submissions\/([a-f0-9]{32})\/?$/, async (req, res, m) => handleDelete(req, res, m[1]), 'session'],
   ['GET', /^\/api\/admin\/files\/([a-f0-9]{32})\/?$/, async (req, res, m) => handleAdminFile(req, res, m[1]), 'session'],
