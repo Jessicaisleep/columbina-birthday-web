@@ -3,7 +3,7 @@
   <div class="grain"></div>
   <div class="vignette"></div>
 
-  <AudioToggle />
+  <AudioToggle v-if="view !== 'admin'" />
 
   <template v-if="view === 'signup'">
     <SubmitPage @back="go('home')" />

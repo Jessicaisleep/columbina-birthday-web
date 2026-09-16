@@ -340,8 +340,6 @@ function rowToJson(row, withContact) {
   if (withContact) {
     out.contactType = row.contact_type;
     out.contactValue = row.contact_value;
-    out.ip = row.ip;
-    out.ua = row.ua;
   } else {
     out.contact = `${row.contact_type} / ${maskContact(row.contact_type, row.contact_value)}`;
   }
@@ -531,6 +529,10 @@ async function handleUserSecret(req, res, id) {
 async function handleUserReveal(req, res, id) {
   const u = await db.getAdminUserById(id);
   if (!u) return json(res, 404, { ok: false, error: '账号不存在' });
+  /* 只允许看普通管理员的口令；超级管理员之间（含自己）一律不给看 */
+  if (u.role !== 'admin') {
+    return json(res, 403, { ok: false, error: '超级管理员的口令不提供查看' });
+  }
   if (!u.secret_enc) {
     return json(res, 200, {
       ok: true, id, username: u.username, secret: null, stored: false,

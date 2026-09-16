@@ -87,7 +87,7 @@
         <!-- 账号管理（仅超级管理员） -->
         <section v-if="me.role === 'super'" class="users">
           <h3>管理员账号</h3>
-          <p class="hint">超级管理员可以新建管理员；管理员只能查看、收藏、删除投稿，不能管理账号。<br />口令可点「查看密码」直接查看（存的是加密副本，仅超级管理员可见）。</p>
+          <p class="hint">超级管理员可以新建管理员；管理员只能查看、收藏、删除投稿，不能管理账号。<br />口令可点「查看密码」查看（存的是加密副本，只对<b>普通管理员</b>开放）。</p>
           <form class="user-form" @submit.prevent="createUser">
             <input v-model.trim="newUser.username" placeholder="新账号（4–32 位，字母开头）" />
             <input v-model="newUser.secret" type="password" placeholder="口令（至少 8 位，非纯数字）" />
@@ -111,7 +111,10 @@
               </span>
               <span v-else-if="revealHint[u.id]" class="dim pw-hint">{{ revealHint[u.id] }}</span>
               <span class="spacer"></span>
-              <button class="mini" type="button" :disabled="revealingId === u.id" @click="toggleReveal(u)">
+              <button class="mini" type="button"
+                      :disabled="revealingId === u.id || u.role !== 'admin'"
+                      :title="u.role === 'admin' ? '' : '超级管理员的口令不提供查看'"
+                      @click="toggleReveal(u)">
                 {{ revealed[u.id] ? '隐藏密码' : (revealingId === u.id ? '读取中…' : '查看密码') }}
               </button>
               <button class="mini" type="button" @click="askReset(u)">重置口令</button>
@@ -153,8 +156,7 @@
             <dt>其他角色</dt>
             <dd>{{ detail.hasOtherCharacters ? (detail.otherCharacters.join('、') || '—') : '未涉及' }}</dd>
           </div>
-          <div>
-            <dt>作品预览</dt>
+          <div><dt>作品预览</dt>
             <dd>
               <a v-if="detail.previewType === 'link'" :href="detail.previewLink" target="_blank" rel="noopener" class="link">{{ detail.previewLink }}</a>
               <template v-else-if="detail.previewType === 'file'">见下方附件</template>
@@ -169,7 +171,6 @@
               </a>
             </dd>
           </div>
-          <div><dt>来源</dt><dd class="dim">IP {{ detail.ip || '—' }}</dd></div>
         </dl>
 
         <div class="modal-actions">
@@ -417,6 +418,11 @@ function askDeleteUser(u) { pendingUser.value = { mode: 'delete', user: u } }
 /** 查看口令：解密服务端存的副本；旧账号没副本时给出“重置一次”的提示 */
 async function toggleReveal(u) {
   if (revealed[u.id]) { delete revealed[u.id]; return }
+  if (u.role !== 'admin') {
+    userErr.value = true
+    userMsg.value = '超级管理员的口令不提供查看（只能查看普通管理员）'
+    return
+  }
   revealingId.value = u.id
   userErr.value = false
   try {
