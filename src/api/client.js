@@ -32,15 +32,27 @@ export async function getUpload(uploadId) {
   return readJson(res)
 }
 
-/** 上传单个分片 */
-export async function putChunk(uploadId, index, blob, signal) {
-  const res = await fetch(url(`/uploads/${uploadId}/chunk/${index}`), {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/octet-stream' },
-    body: blob,
-    signal,
+/** 上传单个分片（用 XHR 是为了拿字节级上传进度 —— fetch 没有 upload 进度事件） */
+export function putChunk(uploadId, index, blob, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('PUT', url(`/uploads/${uploadId}/chunk/${index}`))
+    xhr.setRequestHeader('Content-Type', 'application/octet-stream')
+    if (onProgress && xhr.upload) {
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) onProgress(e.loaded, e.total)
+      }
+    }
+    xhr.onload = () => {
+      let data = null
+      try { data = JSON.parse(xhr.responseText) } catch (e) { data = null }
+      resolve(data && typeof data === 'object' ? data : { ok: false, error: `服务器返回异常（${xhr.status}）` })
+    }
+    xhr.onerror = () => reject(new Error('网络异常'))
+    xhr.onabort = () => reject(new Error('已取消'))
+    xhr.ontimeout = () => reject(new Error('上传超时'))
+    xhr.send(blob)
   })
-  return readJson(res)
 }
 
 /** 合并分片 */

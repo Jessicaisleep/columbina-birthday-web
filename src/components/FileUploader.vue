@@ -27,11 +27,16 @@
           <span class="size">{{ prettySize(it.file.size) }}</span>
           <button type="button" class="x" aria-label="移除" @click="remove(it)">✕</button>
         </div>
-        <div class="bar"><i :style="{ width: it.percent + '%' }"></i></div>
+        <div class="bar-row">
+          <div class="bar"><i :style="{ width: it.percent + '%' }"></i></div>
+          <span class="pct" :class="it.status">{{ it.percent }}%</span>
+        </div>
         <div class="state" :class="it.status">
-          <template v-if="it.status === 'done'">已上传 ✓</template>
+          <template v-if="it.status === 'done'">已上传 ✓　<span class="dim">{{ doneText(it) }}</span></template>
           <template v-else-if="it.status === 'error'">{{ it.error || '上传失败' }}　<button type="button" class="retry" @click="retry(it)">重试</button></template>
-          <template v-else-if="it.status === 'uploading'">上传中 {{ it.percent }}%（{{ prettySize(it.uploadedBytes) }} / {{ prettySize(it.file.size) }}）</template>
+          <template v-else-if="it.status === 'uploading'">
+            上传中 · <b class="spd">{{ formatSpeed(it.speed) }}</b> · {{ prettySize(sentBytes(it)) }} / {{ prettySize(it.file.size) }}
+          </template>
           <template v-else>等待上传…</template>
         </div>
       </li>
@@ -115,7 +120,7 @@ function addFiles(files) {
   for (const file of files) {
     if (items.value.length >= props.maxFiles) break
     if (file.size > props.maxMB * 1024 * 1024) {
-      items.value.push({ key: `k${++keySeq}`, file, status: 'error', error: `超过 ${props.maxMB} MB 上限`, percent: 0, uploadedBytes: 0, chunks: new Set() })
+      items.value.push({ key: `k${++keySeq}`, file, status: 'error', error: `超过 ${props.maxMB} MB 上限`, percent: 0, uploadedBytes: 0, speed: 0, chunks: new Set() })
       continue
     }
     if (items.value.some((it) => it.file.name === file.name && it.file.size === file.size && it.status !== 'error')) continue
@@ -135,6 +140,14 @@ function reactiveItem(file) {
     chunksTotal: 0,
     chunks: new Set(),
     uploadedBytes: 0,
+    /* 上传中：每个分片已发出去的字节（idx -> loaded），用于字节级进度 */
+    inflight: new Map(),
+    /* 速度采样：最近几秒的 (时间, 已发字节) */
+    samples: [],
+    speed: 0,
+    startedAt: 0,
+    elapsedMs: 0,
+    avgSpeed: 0,
     percent: 0,
     status: 'waiting',
     error: '',
@@ -191,7 +204,13 @@ async function start(it) {
       savePending()
     }
     if (!it.chunksTotal) it.chunksTotal = Math.max(1, Math.ceil(it.file.size / it.chunkSize))
-    it.percent = Math.min(100, Math.round((it.uploadedBytes / it.file.size) * 100))
+    it.inflight = new Map()
+    it.samples = [{ t: Date.now(), bytes: it.uploadedBytes }]
+    it.speed = 0
+    it.startedAt = Date.now()
+    it.elapsedMs = 0
+    it.avgSpeed = 0
+    it.percent = percentOf(it)
 
     const todo = []
     for (let i = 0; i < it.chunksTotal; i++) if (!it.chunks.has(i)) todo.push(i)
@@ -204,10 +223,14 @@ async function start(it) {
         const idx = todo[cursor++]
         const begin = idx * it.chunkSize
         const blob = it.file.slice(begin, Math.min(begin + it.chunkSize, it.file.size))
-        await putWithRetry(it, idx, blob)
+        await putWithRetry(it, idx, blob, (loaded) => {
+          it.inflight.set(idx, loaded)
+          tick(it)
+        })
+        it.inflight.delete(idx)
         it.chunks.add(idx)
         it.uploadedBytes += blob.size
-        it.percent = Math.min(100, Math.round((it.uploadedBytes / it.file.size) * 100))
+        tick(it)
       }
     }
     await Promise.all(Array.from({ length: lanes }, worker))
@@ -219,6 +242,9 @@ async function start(it) {
     it.status = 'done'
     it.percent = 100
     it.uploadedBytes = it.file.size
+    it.inflight = new Map()
+    it.elapsedMs = it.startedAt ? Date.now() - it.startedAt : 0
+    it.avgSpeed = it.elapsedMs > 0 ? it.file.size / (it.elapsedMs / 1000) : 0
     dropPending(it.uploadId)
     resumeHint.value = ''
     emitChange()
@@ -230,12 +256,12 @@ async function start(it) {
   }
 }
 
-async function putWithRetry(it, idx, blob) {
+async function putWithRetry(it, idx, blob, onProgress) {
   let lastErr = null
   for (let attempt = 0; attempt < 3; attempt++) {
     if (it.cancelled) throw new Error('已取消')
     try {
-      const r = await putChunk(it.uploadId, idx, blob)
+      const r = await putChunk(it.uploadId, idx, blob, onProgress)
       if (r.ok) return r
       if (r.expired) { it.uploadId = null; throw new Error('上传会话已过期，请重试') }
       lastErr = new Error(r.error || '分片上传失败')
@@ -247,6 +273,38 @@ async function putWithRetry(it, idx, blob) {
   throw lastErr || new Error('网络异常')
 }
 
+/* ---------------- 进度与速度 ---------------- */
+
+/** 已发出去的字节 = 已传完的分片 + 正在传的分片已发出的部分 */
+function sentBytes(it) {
+  let inFlight = 0
+  if (it.inflight) it.inflight.forEach((v) => { inFlight += Number(v) || 0 })
+  return Math.min(it.file.size, it.uploadedBytes + inFlight)
+}
+
+function percentOf(it) {
+  if (!it.file.size) return 0
+  return Math.min(100, Math.floor((sentBytes(it) / it.file.size) * 100))
+}
+
+/** 每来一次进度事件就采一次样，用最近 4 秒的窗口算瞬时速度（再做指数平滑，避免跳来跳去） */
+function tick(it) {
+  const now = Date.now()
+  const bytes = sentBytes(it)
+  const s = it.samples
+  if (!s.length || now - s[s.length - 1].t >= 150) s.push({ t: now, bytes })
+  while (s.length > 2 && now - s[0].t > 4000) s.shift()
+  if (s.length >= 2) {
+    const dt = (now - s[0].t) / 1000
+    const db = bytes - s[0].bytes
+    if (dt >= 0.35 && db >= 0) {
+      const inst = db / dt
+      it.speed = it.speed > 0 ? it.speed * 0.55 + inst * 0.45 : inst
+    }
+  }
+  it.percent = percentOf(it)
+}
+
 /* ---------------- 展示 ---------------- */
 
 function prettySize(n) {
@@ -255,6 +313,26 @@ function prettySize(n) {
   if (v < 1024 * 1024) return `${(v / 1024).toFixed(1)} KB`
   if (v < 1024 * 1024 * 1024) return `${(v / 1024 / 1024).toFixed(1)} MB`
   return `${(v / 1024 / 1024 / 1024).toFixed(2)} GB`
+}
+
+function formatSpeed(bytesPerSec) {
+  const v = Number(bytesPerSec) || 0
+  if (v <= 0) return '测速中…'
+  if (v < 1024) return `${Math.round(v)} B/s`
+  if (v < 1024 * 1024) return `${(v / 1024).toFixed(0)} KB/s`
+  return `${(v / 1024 / 1024).toFixed(1)} MB/s`
+}
+
+function formatDuration(ms) {
+  const s = Math.max(1, Math.round(ms / 1000))
+  if (s < 60) return `${s} 秒`
+  const m = Math.floor(s / 60)
+  return `${m} 分 ${s % 60} 秒`
+}
+
+function doneText(it) {
+  if (!it.elapsedMs) return ''
+  return `用时 ${formatDuration(it.elapsedMs)} · 平均 ${formatSpeed(it.avgSpeed)}`
 }
 
 onBeforeUnmount(() => { savePending() })
@@ -283,9 +361,15 @@ defineExpose({ hasUploading: computed(() => items.value.some((it) => it.status =
 .row .size{font-size:12px;color:var(--ink-faint);font-variant-numeric:tabular-nums}
 .x{background:none;border:none;color:var(--ink-faint);cursor:pointer;font-size:14px;padding:2px 4px;transition:color .3s}
 .x:hover{color:#e88}
-.bar{height:4px;border-radius:99px;background:rgba(157,184,232,.16);margin:10px 0 6px;overflow:hidden}
-.bar i{display:block;height:100%;background:linear-gradient(90deg,var(--blue),var(--gold));transition:width .3s}
+.bar-row{display:flex;align-items:center;gap:10px;margin:10px 0 6px}
+.bar{flex:1;height:4px;border-radius:99px;background:rgba(157,184,232,.16);overflow:hidden}
+.bar i{display:block;height:100%;background:linear-gradient(90deg,var(--blue),var(--gold));transition:width .25s}
+.pct{font-size:12px;color:var(--ink-dim);font-variant-numeric:tabular-nums;min-width:38px;text-align:right}
+.pct.done{color:#8fd6a8}
+.pct.error{color:#e89c9c}
 .state{font-size:12px;color:var(--ink-dim);letter-spacing:.03em}
+.state .spd{color:var(--gold);font-weight:400}
+.state .dim{color:var(--ink-faint)}
 .state.done{color:#8fd6a8}
 .state.error{color:#e89c9c}
 .retry{background:none;border:1px solid rgba(230,200,138,.5);border-radius:99px;color:var(--gold);font-size:12px;padding:2px 10px;cursor:pointer}
