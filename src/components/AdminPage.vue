@@ -87,7 +87,6 @@
         <!-- 账号管理（仅超级管理员） -->
         <section v-if="me.role === 'super'" class="users">
           <h3>管理员账号</h3>
-          <p class="hint">超级管理员可以新建管理员；管理员只能查看、收藏、删除投稿，不能管理账号。<br />口令可点「查看密码」查看：普通管理员的都能看，超级管理员只能看<b>自己</b>的（存的是加密副本）。</p>
           <form class="user-form" @submit.prevent="createUser">
             <input v-model.trim="newUser.username" placeholder="新账号（4–32 位，字母开头）" />
             <input v-model="newUser.secret" type="password" placeholder="口令（至少 8 位，非纯数字）" />
