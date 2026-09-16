@@ -87,7 +87,7 @@
         <!-- 账号管理（仅超级管理员） -->
         <section v-if="me.role === 'super'" class="users">
           <h3>管理员账号</h3>
-          <p class="hint">超级管理员可以新建管理员；管理员只能查看、收藏、删除投稿，不能管理账号。</p>
+          <p class="hint">超级管理员可以新建管理员；管理员只能查看、收藏、删除投稿，不能管理账号。<br />口令可点「查看密码」直接查看（存的是加密副本，仅超级管理员可见）。</p>
           <form class="user-form" @submit.prevent="createUser">
             <input v-model.trim="newUser.username" placeholder="新账号（4–32 位，字母开头）" />
             <input v-model="newUser.secret" type="password" placeholder="口令（至少 8 位，非纯数字）" />
@@ -105,7 +105,15 @@
               <span class="badge small" :class="u.role">{{ u.role === 'super' ? '超级管理员' : '管理员' }}</span>
               <span class="dim">建号 {{ fmtTime(u.createdAt) }}</span>
               <span class="dim">上次登录 {{ u.lastLoginAt ? fmtTime(u.lastLoginAt) : '—' }}</span>
+              <span v-if="revealed[u.id]" class="pw">
+                口令：<code>{{ revealed[u.id] }}</code>
+                <button class="mini tiny" type="button" @click="copySecret(revealed[u.id], u.id)">{{ copiedId === u.id ? '已复制 ✓' : '复制' }}</button>
+              </span>
+              <span v-else-if="revealHint[u.id]" class="dim pw-hint">{{ revealHint[u.id] }}</span>
               <span class="spacer"></span>
+              <button class="mini" type="button" :disabled="revealingId === u.id" @click="toggleReveal(u)">
+                {{ revealed[u.id] ? '隐藏密码' : (revealingId === u.id ? '读取中…' : '查看密码') }}
+              </button>
               <button class="mini" type="button" @click="askReset(u)">重置口令</button>
               <button class="mini danger" type="button" :disabled="u.username === me.username" @click="askDeleteUser(u)">删除</button>
             </li>
@@ -235,6 +243,12 @@ const userMsg = ref('')
 const userErr = ref(false)
 const userBusy = ref(false)
 const pendingUser = ref(null)
+
+/* 查看口令（仅 super） */
+const revealed = reactive({})
+const revealHint = reactive({})
+const revealingId = ref('')
+const copiedId = ref('')
 
 const TYPE_LABEL = { qq: 'QQ', wechat: '微信', email: '邮箱' }
 
@@ -400,6 +414,56 @@ async function createUser() {
 function askReset(u) { pendingUser.value = { mode: 'reset', user: u, secret: '' } }
 function askDeleteUser(u) { pendingUser.value = { mode: 'delete', user: u } }
 
+/** 查看口令：解密服务端存的副本；旧账号没副本时给出“重置一次”的提示 */
+async function toggleReveal(u) {
+  if (revealed[u.id]) { delete revealed[u.id]; return }
+  revealingId.value = u.id
+  userErr.value = false
+  try {
+    const r = await adminApi.revealUserSecret(u.id)
+    if (!r.ok) { userErr.value = true; userMsg.value = r.error || '无法查看口令'; return }
+    if (r.secret) {
+      revealed[u.id] = r.secret
+      delete revealHint[u.id]
+    } else {
+      revealHint[u.id] = r.hint || '未保存可查看的口令'
+    }
+  } finally {
+    revealingId.value = ''
+  }
+}
+
+async function copySecret(text, id) {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text)
+    } else {
+      const ta = document.createElement('textarea')
+      ta.value = text
+      ta.style.position = 'fixed'
+      ta.style.opacity = '0'
+      document.body.appendChild(ta)
+      ta.select()
+      document.execCommand('copy')
+      document.body.removeChild(ta)
+    }
+  } catch (e) {
+    /* 剪贴板被拒（无权限 / 非安全上下文）就退回到老办法；口令反正已经显示在屏幕上 */
+    try {
+      const ta = document.createElement('textarea')
+      ta.value = text
+      ta.style.position = 'fixed'
+      ta.style.opacity = '0'
+      document.body.appendChild(ta)
+      ta.select()
+      document.execCommand('copy')
+      document.body.removeChild(ta)
+    } catch (e2) { /* 实在不行就算了 */ }
+  }
+  copiedId.value = id
+  setTimeout(() => { if (copiedId.value === id) copiedId.value = '' }, 1600)
+}
+
 async function confirmUser() {
   const p = pendingUser.value
   if (!p) return
@@ -410,6 +474,8 @@ async function confirmUser() {
       const r = await adminApi.resetUserSecret(p.user.id, p.secret)
       if (!r.ok) { userErr.value = true; userMsg.value = r.error || '重置失败'; return }
       userMsg.value = `已重置「${p.user.username}」的口令`
+      delete revealHint[p.user.id]
+      revealed[p.user.id] = p.secret
     } else {
       const r = await adminApi.deleteUser(p.user.id)
       if (!r.ok) { userErr.value = true; userMsg.value = r.error || '删除失败'; return }
@@ -460,6 +526,10 @@ option{background:#0a0f1e;color:var(--ink)}
 .mini.danger{color:#e9a2a2;border-color:rgba(233,162,162,.35)}
 .mini.danger:hover:not(:disabled){color:#ffb4b4;border-color:rgba(233,162,162,.7);background:rgba(233,162,162,.08)}
 .mini.gold{color:var(--bg);background:linear-gradient(135deg,var(--gold),#f0d9a8);border:none}
+.mini.tiny{padding:2px 10px;font-size:12px;letter-spacing:.04em}
+.pw{font-size:13px;color:var(--moon);display:inline-flex;align-items:center;gap:8px}
+.pw code{font-family:ui-monospace,Consolas,monospace;font-size:13px;padding:2px 8px;border-radius:6px;background:rgba(230,200,138,.12);border:1px solid rgba(230,200,138,.28);color:var(--gold);user-select:all}
+.pw-hint{flex:1 1 100%;color:var(--gold);opacity:.85}
 .subs{list-style:none;display:flex;flex-direction:column;gap:12px}
 .subs li{display:flex;gap:16px;align-items:center;justify-content:space-between;padding:16px 18px;border:1px solid var(--line);border-radius:14px;background:rgba(10,15,30,.5);transition:border-color .3s}
 .subs li.fav{border-color:rgba(230,200,138,.45);background:rgba(230,200,138,.05)}

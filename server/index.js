@@ -97,6 +97,13 @@ function readAdminSecret() {
   try { return db.readAdminSecret(cfg); } catch (e) { return ''; }
 }
 
+/* 口令可查看副本用的服务器密钥（首次运行自动生成，600）。丢了只影响查看，不影响登录。 */
+let SECRET_KEY = null;
+function keyFilePath() {
+  const f = cfg.secretKeyFile || 'data/secret.key';
+  return path.isAbsolute(f) ? f : path.join(ROOT, f);
+}
+
 /**
  * 管理端鉴权：
  * - 配置里的总秘钥（adminSecretFile）→ 视为 super，供运维/脚本使用
@@ -468,6 +475,7 @@ async function handleUsersList(req, res) {
     items: rows.map((u) => ({
       id: u.id, username: u.username, role: u.role,
       createdAt: u.created_at, createdBy: u.created_by, lastLoginAt: u.last_login_at,
+      hasSecret: !!u.has_secret,
     })),
   });
 }
@@ -492,6 +500,7 @@ async function handleUserCreate(req, res, me) {
   const row = {
     id: auth.newId(16), username, salt,
     hash: auth.hashSecret(secret, salt), role,
+    secretEnc: SECRET_KEY ? auth.encryptSecret(secret, SECRET_KEY) : null,
     createdBy: me.viaMaster ? 'master' : me.username,
   };
   await db.createAdminUser(row);
@@ -509,8 +518,34 @@ async function handleUserSecret(req, res, id) {
   const u = await db.getAdminUserById(id);
   if (!u) return json(res, 404, { ok: false, error: '账号不存在' });
   const salt = auth.newSalt();
-  await db.updateAdminSecret(id, salt, auth.hashSecret(secret, salt));
+  const enc = SECRET_KEY ? auth.encryptSecret(secret, SECRET_KEY) : null;
+  await db.updateAdminSecret(id, salt, auth.hashSecret(secret, salt), enc);
   return json(res, 200, { ok: true, id, username: u.username });
+}
+
+/**
+ * 查看账号口令（仅 super）。
+ * 解密的是创建/重置时存下的加密副本；登录校验永远走哈希，不受影响。
+ * 老账号（加这个功能之前建的）没有副本，只能重置一次后才能查看。
+ */
+async function handleUserReveal(req, res, id) {
+  const u = await db.getAdminUserById(id);
+  if (!u) return json(res, 404, { ok: false, error: '账号不存在' });
+  if (!u.secret_enc) {
+    return json(res, 200, {
+      ok: true, id, username: u.username, secret: null, stored: false,
+      hint: '这个账号是在「可查看口令」之前建的，请点「重置口令」重设一次，之后就能查看。',
+    });
+  }
+  if (!SECRET_KEY) return json(res, 500, { ok: false, error: '服务端未加载密钥' });
+  const plain = auth.decryptSecret(u.secret_enc, SECRET_KEY);
+  if (!plain) {
+    return json(res, 200, {
+      ok: true, id, username: u.username, secret: null, stored: true,
+      hint: '口令副本解密失败（密钥文件可能换过了），请重置口令。',
+    });
+  }
+  return json(res, 200, { ok: true, id, username: u.username, secret: plain, stored: true });
 }
 
 async function handleUserDelete(req, res, me, id) {
@@ -550,6 +585,7 @@ const ROUTES = [
   ['GET', /^\/api\/admin\/users\/?$/, handleUsersList, 'super'],
   ['POST', /^\/api\/admin\/users\/?$/, async (req, res, m, url, me) => handleUserCreate(req, res, me), 'super'],
   ['POST', /^\/api\/admin\/users\/([a-f0-9]{32})\/secret\/?$/, async (req, res, m) => handleUserSecret(req, res, m[1]), 'super'],
+  ['GET', /^\/api\/admin\/users\/([a-f0-9]{32})\/secret\/?$/, async (req, res, m) => handleUserReveal(req, res, m[1]), 'super'],
   ['DELETE', /^\/api\/admin\/users\/([a-f0-9]{32})\/?$/, async (req, res, m, url, me) => handleUserDelete(req, res, me, m[1]), 'super'],
 ];
 
@@ -598,6 +634,7 @@ async function ensureSuperAdmin() {
   await db.createAdminUser({
     id: auth.newId(16), username, salt,
     hash: auth.hashSecret(secret, salt), role: 'super', createdBy: 'system',
+    secretEnc: SECRET_KEY ? auth.encryptSecret(secret, SECRET_KEY) : null,
   });
   const p = path.join(DATA_DIR, 'admin-init.txt');
   fs.writeFileSync(
@@ -611,6 +648,7 @@ async function ensureSuperAdmin() {
 async function main() {
   fs.mkdirSync(DATA_DIR, { recursive: true });
   up.initDirs(DATA_DIR);
+  SECRET_KEY = auth.loadKey(keyFilePath());
   await db.init();
   await ensureSuperAdmin();
   const retentionDays = Number(cfg.retentionDays || 7);

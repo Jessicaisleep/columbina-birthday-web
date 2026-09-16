@@ -4,6 +4,7 @@
  * 口令用 PBKDF2-SHA512 加盐哈希存库（不存明文）；登录态是一次性随机串，落库并带过期时间，可随时吊销。
  */
 const crypto = require('crypto');
+const fs = require('fs');
 
 const ITERATIONS = 120000;
 const KEY_LEN = 64;
@@ -37,6 +38,41 @@ function verifySecret(secret, salt, hash) {
 function sessionTtlMs(cfg) {
   const h = Number((cfg && cfg.sessionTTLHours) || TTL_HOURS_DEFAULT);
   return Math.max(1, h) * 3600 * 1000;
+}
+
+/* ---- 口令的可查看副本（加密存储）----
+ * 登录校验永远走加盐哈希；这里额外存一份用服务器密钥加密的副本，
+ * 仅供超级管理员在后台点「查看密码」时解密查看。密钥文件（默认 data/secret.key，600）不能丢，
+ * 丢了只影响查看，不影响登录。
+ */
+
+function loadKey(file) {
+  if (fs.existsSync(file)) {
+    const raw = fs.readFileSync(file, 'utf8').trim();
+    if (/^[0-9a-f]{64}$/i.test(raw)) return Buffer.from(raw, 'hex');
+  }
+  const key = crypto.randomBytes(32);
+  fs.writeFileSync(file, key.toString('hex') + '\n', { mode: 0o600 });
+  return key;
+}
+
+function encryptSecret(plain, key) {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const enc = Buffer.concat([cipher.update(String(plain), 'utf8'), cipher.final()]);
+  return ['v1', iv.toString('base64'), cipher.getAuthTag().toString('base64'), enc.toString('base64')].join(':');
+}
+
+function decryptSecret(blob, key) {
+  try {
+    const [v, iv64, tag64, data64] = String(blob || '').split(':');
+    if (v !== 'v1' || !iv64 || !tag64 || !data64) return '';
+    const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(iv64, 'base64'));
+    decipher.setAuthTag(Buffer.from(tag64, 'base64'));
+    return Buffer.concat([decipher.update(Buffer.from(data64, 'base64')), decipher.final()]).toString('utf8');
+  } catch (e) {
+    return '';
+  }
 }
 
 /** 用户名规则：4–32 位，字母数字下划线短横线，字母开头 */
@@ -76,4 +112,5 @@ module.exports = {
   newId, newSalt, hashSecret, verifySecret, sameSecret,
   sessionTtlMs, validUsername, validSecret,
   tooManyAttempts, noteFailure, clearFailures,
+  loadKey, encryptSecret, decryptSecret,
 };

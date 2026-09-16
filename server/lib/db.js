@@ -110,6 +110,7 @@ const SCHEMA = [
 const MIGRATIONS = [
   { table: 'submissions', column: 'favorite', sql: "ALTER TABLE submissions ADD COLUMN favorite TINYINT(1) NOT NULL DEFAULT 0" },
   { table: 'submissions', column: 'favorited_at', sql: "ALTER TABLE submissions ADD COLUMN favorited_at DATETIME NULL" },
+  { table: 'admin_users', column: 'secret_enc', sql: "ALTER TABLE admin_users ADD COLUMN secret_enc VARCHAR(255) NULL" },
 ];
 
 async function migrate() {
@@ -326,7 +327,9 @@ async function countAdmins() {
 
 async function listAdminUsers() {
   const [rows] = await get().query(
-    'SELECT id, username, role, created_at, created_by, last_login_at FROM admin_users ORDER BY created_at'
+    `SELECT id, username, role, created_at, created_by, last_login_at,
+            (secret_enc IS NOT NULL) AS has_secret
+       FROM admin_users ORDER BY created_at`
   );
   return rows;
 }
@@ -343,14 +346,17 @@ async function getAdminUserByName(username) {
 
 async function createAdminUser(row) {
   await get().query(
-    `INSERT INTO admin_users (id, username, salt, hash, role, created_at, created_by)
-     VALUES (?,?,?,?,?,?,?)`,
-    [row.id, row.username, row.salt, row.hash, row.role, now(), row.createdBy || null]
+    `INSERT INTO admin_users (id, username, salt, hash, role, created_at, created_by, secret_enc)
+     VALUES (?,?,?,?,?,?,?,?)`,
+    [row.id, row.username, row.salt, row.hash, row.role, now(), row.createdBy || null, row.secretEnc || null]
   );
 }
 
-async function updateAdminSecret(id, salt, hash) {
-  await get().query('UPDATE admin_users SET salt = ?, hash = ? WHERE id = ?', [salt, hash, id]);
+async function updateAdminSecret(id, salt, hash, secretEnc) {
+  await get().query(
+    'UPDATE admin_users SET salt = ?, hash = ?, secret_enc = ? WHERE id = ?',
+    [salt, hash, secretEnc || null, id]
+  );
 }
 
 async function touchAdminLogin(id) {

@@ -63,6 +63,7 @@ export const adminApi = {
   createUser(payload) { return call('/admin/users', { method: 'POST', body: payload }) },
   deleteUser(id) { return call(`/admin/users/${id}`, { method: 'DELETE' }) },
   resetUserSecret(id, secret) { return call(`/admin/users/${id}/secret`, { method: 'POST', body: { secret } }) },
+  revealUserSecret(id) { return call(`/admin/users/${id}/secret`) },
 
   fileUrl(id) { return `${API_BASE}/admin/files/${id}?tk=${encodeURIComponent(tk)}` },
 }
