@@ -26,8 +26,10 @@
             <dd>{{ receipt.files.map((f) => f.name).join('、') }}</dd>
           </div>
         </dl>
-        <p class="tip">请务必保存编号，方便后续与负责人核对或需要修改内容时使用；请不要泄露编号给其他人，防止内容被篡改。</p>
-        <p class="tip">如果不小心没有保存编号，请及时联系项目组，并提供投稿时填写的联系方式、作品名称等信息，我们会帮你找回。</p>
+        <div class="tips">
+          <p class="tip strong"><i class="mark">！</i>请务必保存编号，方便后续与负责人核对或需要修改内容时使用；请不要泄露编号给其他人，防止内容被篡改。</p>
+          <p class="tip strong"><i class="mark">！</i>如果不小心没有保存编号，请及时联系项目组，并提供投稿时填写的联系方式、作品名称等信息，我们会帮你找回。</p>
+        </div>
         <p class="tip">需要改内容？点右上角「我要修改」，输入编号就能直接改，不用重新填一遍。</p>
         <div class="done-actions">
           <button type="button" class="btn" @click="resetAll">再投一份</button>
@@ -575,7 +577,18 @@ option{background:#0a0f1e;color:var(--ink)}
 .receipt dt{flex:0 0 84px;color:var(--ink-faint);font-size:13px}
 .receipt dd{flex:1;font-size:13.5px;word-break:break-all}
 .mono{font-family:ui-monospace,Consolas,monospace;color:var(--moon)}
-.tip{font-size:12.5px;color:var(--ink-faint);max-width:520px}
+.tip{font-size:12.5px;color:var(--ink-dim);max-width:520px;line-height:1.8}
+/* 关键提醒：白字加粗 + 金色警示框，务必一眼看见 */
+.tips{
+  width:100%;max-width:520px;display:flex;flex-direction:column;gap:10px;text-align:left;
+  border:1px solid rgba(230,200,138,.42);border-left:3px solid var(--gold);border-radius:12px;
+  padding:14px 18px;background:linear-gradient(180deg,rgba(230,200,138,.13),rgba(230,200,138,.04));
+}
+.tip.strong{
+  margin:0;max-width:none;color:#ffffff;font-weight:700;font-size:13.5px;
+  letter-spacing:.02em;line-height:1.85;
+}
+.tip .mark{color:var(--gold);font-style:normal;font-weight:700;margin-right:7px}
 .done-actions{display:flex;gap:14px;flex-wrap:wrap;justify-content:center}
 /* 弹窗 */
 .modal{
@@ -600,7 +613,11 @@ option{background:#0a0f1e;color:var(--ink)}
   transition:border-color .3s,box-shadow .3s;
 }
 .code-input:focus{border-color:rgba(230,200,138,.55);box-shadow:0 0 0 3px rgba(230,200,138,.1)}
-.edit-warn{font-size:12px;color:var(--ink-faint);letter-spacing:.03em;margin-top:18px;line-height:1.8}
+.edit-warn{
+  font-size:12.5px;color:#ffffff;font-weight:600;letter-spacing:.02em;margin-top:18px;line-height:1.85;
+  text-align:left;border:1px solid rgba(230,200,138,.38);border-left:3px solid var(--gold);border-radius:10px;
+  padding:12px 14px;background:rgba(230,200,138,.1);
+}
 .modal-close{position:absolute;top:14px;right:16px;background:none;border:none;color:var(--ink-faint);font-size:20px;cursor:pointer}
 .modal-close:hover{color:var(--gold)}
 .modal-actions{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-top:26px}
