@@ -87,7 +87,7 @@
         <!-- 账号管理（仅超级管理员） -->
         <section v-if="me.role === 'super'" class="users">
           <h3>管理员账号</h3>
-          <p class="hint">超级管理员可以新建管理员；管理员只能查看、收藏、删除投稿，不能管理账号。<br />口令可点「查看密码」查看（存的是加密副本，只对<b>普通管理员</b>开放）。</p>
+          <p class="hint">超级管理员可以新建管理员；管理员只能查看、收藏、删除投稿，不能管理账号。<br />口令可点「查看密码」查看：普通管理员的都能看，超级管理员只能看<b>自己</b>的（存的是加密副本）。</p>
           <form class="user-form" @submit.prevent="createUser">
             <input v-model.trim="newUser.username" placeholder="新账号（4–32 位，字母开头）" />
             <input v-model="newUser.secret" type="password" placeholder="口令（至少 8 位，非纯数字）" />
@@ -112,8 +112,8 @@
               <span v-else-if="revealHint[u.id]" class="dim pw-hint">{{ revealHint[u.id] }}</span>
               <span class="spacer"></span>
               <button class="mini" type="button"
-                      :disabled="revealingId === u.id || u.role !== 'admin'"
-                      :title="u.role === 'admin' ? '' : '超级管理员的口令不提供查看'"
+                      :disabled="revealingId === u.id || !canReveal(u)"
+                      :title="canReveal(u) ? '' : '其他超级管理员的口令不提供查看'"
                       @click="toggleReveal(u)">
                 {{ revealed[u.id] ? '隐藏密码' : (revealingId === u.id ? '读取中…' : '查看密码') }}
               </button>
@@ -253,6 +253,11 @@ const copiedId = ref('')
 
 const TYPE_LABEL = { qq: 'QQ', wechat: '微信', email: '邮箱' }
 
+/** 能看口令的：普通管理员（都是），或超级管理员看自己 */
+function canReveal(u) {
+  return u.role === 'admin' || (!!me.value && u.id === me.value.id)
+}
+
 function typeLabel(t) { return TYPE_LABEL[t] || t || '—' }
 function contactLabel(it) { return `${typeLabel(it.contactType)}：${it.contactValue || '—'}` }
 
@@ -281,7 +286,7 @@ async function bootstrap() {
   if (!tk.value) return
   const r = await adminApi.me()
   if (r.ok) {
-    me.value = { username: r.username, role: r.role, viaMaster: r.viaMaster }
+    me.value = { id: r.id || '', username: r.username, role: r.role, viaMaster: r.viaMaster }
     await Promise.all([refresh(), me.value.role === 'super' ? loadUsers() : Promise.resolve()])
   } else {
     saveToken('')
@@ -298,7 +303,10 @@ async function doLogin() {
     if (!r.ok) { loginError.value = r.error || '登录失败'; return }
     saveToken(r.tk)
     tk.value = r.tk
-    me.value = { username: r.username, role: r.role, viaMaster: false }
+    const info = await adminApi.me()
+    me.value = info.ok
+      ? { id: info.id || '', username: info.username, role: info.role, viaMaster: info.viaMaster }
+      : { id: '', username: r.username, role: r.role, viaMaster: false }
     loginForm.secret = ''
     await Promise.all([refresh(), me.value.role === 'super' ? loadUsers() : Promise.resolve()])
   } finally {
@@ -418,9 +426,9 @@ function askDeleteUser(u) { pendingUser.value = { mode: 'delete', user: u } }
 /** 查看口令：解密服务端存的副本；旧账号没副本时给出“重置一次”的提示 */
 async function toggleReveal(u) {
   if (revealed[u.id]) { delete revealed[u.id]; return }
-  if (u.role !== 'admin') {
+  if (!canReveal(u)) {
     userErr.value = true
-    userMsg.value = '超级管理员的口令不提供查看（只能查看普通管理员）'
+    userMsg.value = '其他超级管理员的口令不提供查看'
     return
   }
   revealingId.value = u.id

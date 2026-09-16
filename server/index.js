@@ -388,7 +388,7 @@ async function handleLogout(req, res, me) {
 }
 
 async function handleMe(req, res, me) {
-  return json(res, 200, { ok: true, username: me.username, role: me.role, viaMaster: !!me.viaMaster });
+  return json(res, 200, { ok: true, id: me.userId || '', username: me.username, role: me.role, viaMaster: !!me.viaMaster });
 }
 
 /* ---------------- 投稿列表 / 详情 ---------------- */
@@ -523,15 +523,16 @@ async function handleUserSecret(req, res, id) {
 
 /**
  * 查看账号口令（仅 super）。
+ * 规则：普通管理员的口令都能看；超级管理员只能看**自己**的，看不到其他超管的。
  * 解密的是创建/重置时存下的加密副本；登录校验永远走哈希，不受影响。
  * 老账号（加这个功能之前建的）没有副本，只能重置一次后才能查看。
  */
-async function handleUserReveal(req, res, id) {
+async function handleUserReveal(req, res, id, me) {
   const u = await db.getAdminUserById(id);
   if (!u) return json(res, 404, { ok: false, error: '账号不存在' });
-  /* 只允许看普通管理员的口令；超级管理员之间（含自己）一律不给看 */
-  if (u.role !== 'admin') {
-    return json(res, 403, { ok: false, error: '超级管理员的口令不提供查看' });
+  const isSelf = !me.viaMaster && me.userId === u.id;
+  if (u.role !== 'admin' && !isSelf) {
+    return json(res, 403, { ok: false, error: '其他超级管理员的口令不提供查看' });
   }
   if (!u.secret_enc) {
     return json(res, 200, {
@@ -587,7 +588,7 @@ const ROUTES = [
   ['GET', /^\/api\/admin\/users\/?$/, handleUsersList, 'super'],
   ['POST', /^\/api\/admin\/users\/?$/, async (req, res, m, url, me) => handleUserCreate(req, res, me), 'super'],
   ['POST', /^\/api\/admin\/users\/([a-f0-9]{32})\/secret\/?$/, async (req, res, m) => handleUserSecret(req, res, m[1]), 'super'],
-  ['GET', /^\/api\/admin\/users\/([a-f0-9]{32})\/secret\/?$/, async (req, res, m) => handleUserReveal(req, res, m[1]), 'super'],
+  ['GET', /^\/api\/admin\/users\/([a-f0-9]{32})\/secret\/?$/, async (req, res, m, url, me) => handleUserReveal(req, res, m[1], me), 'super'],
   ['DELETE', /^\/api\/admin\/users\/([a-f0-9]{32})\/?$/, async (req, res, m, url, me) => handleUserDelete(req, res, me, m[1]), 'super'],
 ];
 
