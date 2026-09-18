@@ -9,7 +9,6 @@ import boardPieceAi from '../p/board-piece-columbina-pink.png'
 import eventHero from '../p/event/hero.jpg'
 import eventLogo from '../p/event/logo.webp'
 import heroMotion from '../p/event/hero-motion.mp4'
-import heroMotionImg from '../p/event/hero-motion.webp'
 import moonObstacle from '../p/event/moon-obstacle.webp'
 import boardBackground from '../p/event/board-background.webp'
 import brandIcon from '../p/event/brand-icon.png'
@@ -65,17 +64,6 @@ const assetGroups = {
 }
 const backgroundPreloadOrder = ['flightCore', 'runnerCore', 'tictactoeCore', 'gomokuCore', 'stageTwo', 'stageThree', 'stageFour']
 const currentStageBackground = computed(() => stageBackgrounds[Math.floor(score.value / 10) % stageBackgrounds.length])
-/* 部分国产浏览器（QQ / 夸克 / UC / 百度等 X5 内核）会嗅探并劫持页面里的 <video>：
-   自动悬浮播放、播放器浮层盖住返回按钮，还会提示“发现视频”。
-   触屏设备与这些内核一律不渲染 video，只显示静态首图。 */
-const SNIFF_UA = /(QQBrowser|MQQBrowser|Quark|UCBrowser|UBrowser|Baidu|baiduboxapp|MicroMessenger|X5)/i
-const TOUCH_UA = /(Android|iPhone|iPad|iPod|Mobile|HarmonyOS)/i
-const showMotion = ref(false)
-if (typeof window !== 'undefined' && typeof navigator !== 'undefined') {
-  const touchLike = TOUCH_UA.test(navigator.userAgent) || !window.matchMedia('(hover: hover)').matches
-  showMotion.value = !touchLike && !SNIFF_UA.test(navigator.userAgent)
-}
-
 function applyBgm() {
   const index = Math.floor(score.value / 10)
   if (screen.value === 'lobby') setBgm(lobbyMusic)
@@ -470,12 +458,11 @@ onBeforeUnmount(() => {
         </header>
 
         <section class="hero" :style="{ '--hero-image': `url('${eventHero}')` }">
-          <img class="hero-fallback" :src="showMotion ? eventHero : heroMotionImg" fetchpriority="high" alt="" aria-hidden="true" />
+          <img class="hero-fallback" :src="eventHero" fetchpriority="high" alt="" aria-hidden="true" />
           <video
-            v-if="showMotion"
             class="hero-video"
             autoplay
-            muted
+            :muted="true"
             loop
             :poster="eventHero"
             playsinline
