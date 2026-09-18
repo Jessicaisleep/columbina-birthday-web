@@ -462,7 +462,7 @@ onBeforeUnmount(() => {
           <video
             class="hero-video"
             autoplay
-            muted
+            :muted="true"
             loop
             :poster="eventHero"
             playsinline
