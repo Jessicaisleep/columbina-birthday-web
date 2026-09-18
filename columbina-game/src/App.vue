@@ -2,6 +2,8 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import characterIdle from '../p/columbina-idle.png'
 import characterJump from '../p/columbina-jump.png'
+import flightIdle from '../p/columbina-flight-tap.png'
+import flightJump from '../p/columbina-flight-default.png'
 import boardPieceHuman from '../p/board-piece-player-purple.png'
 import boardPieceAi from '../p/board-piece-columbina-pink.png'
 import eventHero from '../p/event/hero.jpg'
@@ -53,7 +55,7 @@ const stageBackgrounds = [stageOne, stageTwo, stageThree, stageFour]
 const stageMusic = [stageMusicOne, stageMusicTwo, stageMusicThree, stageMusicFour]
 const loadedAssetGroups = new Set()
 const assetGroups = {
-  flightCore: [characterIdle, characterJump, moonObstacle, stageOne, stageMusicOne],
+  flightCore: [flightIdle, flightJump, moonObstacle, stageOne, stageMusicOne],
   runnerCore: [characterIdle, characterJump, characterRun, moonObstacle, stageOne, stageMusicOne],
   tictactoeCore: [boardPieceHuman, boardPieceAi, ticTacToeBoard, boardBackground, brandIcon, stageMusicThree, ticTacToeWorkerUrl],
   gomokuCore: [boardPieceHuman, boardPieceAi, gomokuBoard, boardBackground, brandIcon, stageMusicThree, gomokuWorkerUrl],
@@ -96,7 +98,7 @@ let launchToken = 0
 let foregroundGroup = ''
 let pendingLaunch = null
 
-const playerImage = computed(() => (isJumping.value ? characterJump : characterIdle))
+const playerImage = computed(() => (isJumping.value ? flightJump : flightIdle))
 const loadingPercent = computed(() => {
   if (!assetLoading.value.total) return 0
   return Math.round(assetLoading.value.loaded / assetLoading.value.total * 100)
