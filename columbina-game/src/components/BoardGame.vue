@@ -8,7 +8,7 @@ import boardBackground from '../../p/event/board-background.webp'
 import brandIcon from '../../p/event/brand-icon.png'
 import { AI, GAME_STATUS, HUMAN } from '../games/shared.js'
 import {
-  claimTicTacToeDraw, createTicTacToeState, makeTicTacToeMove,
+  claimTicTacToeDraw, createTicTacToeState, makeTicTacToeMove, MAX_ACTIVE_PIECES,
 } from '../games/ticTacToeEngine.js'
 import { TicTacToeAI } from '../games/ticTacToeAI.js'
 import { createGomokuState, makeGomokuMove } from '../games/gomokuEngine.js'
@@ -34,6 +34,10 @@ const state = ref(createState())
 const title = computed(() => isTicTacToe.value ? '月亮棋' : '星月五子棋')
 const subtitle = computed(() => isTicTacToe.value ? '仅保留最近 5 枚棋子' : '先连成五子的一方获胜')
 const lastMove = computed(() => state.value.moves.at(-1))
+const expiringMove = computed(() => {
+  if (!isTicTacToe.value || gameOver.value || state.value.moves.length < MAX_ACTIVE_PIECES) return null
+  return state.value.activeMoves[0]
+})
 const winningCells = computed(() => new Set(state.value.winningLine.map(({ row, col }) => `${row}-${col}`)))
 const statusText = computed(() => {
   if (state.value.status === GAME_STATUS.WON) return '🎉 你赢了！'
@@ -224,6 +228,7 @@ onBeforeUnmount(() => { requestId += 1; aiAbortController?.abort(); stopVoice() 
               :class="{
                 occupied: state.board[Math.floor(index / size)][index % size],
                 latest: lastMove?.row === Math.floor(index / size) && lastMove?.col === index % size,
+                expiring: expiringMove?.row === Math.floor(index / size) && expiringMove?.col === index % size,
                 winning: winningCells.has(`${Math.floor(index / size)}-${index % size}`),
               }"
               type="button"
@@ -295,9 +300,12 @@ onBeforeUnmount(() => { requestId += 1; aiAbortController?.abort(); stopVoice() 
 .play-area{min-width:0}.turn-banner{height:48px;padding:0 14px;margin-bottom:12px;border:2px solid var(--line);background:var(--panel);display:flex;align-items:center;gap:9px}.turn-banner small{margin-left:auto;color:var(--muted)}.turn-pulse{width:10px;height:10px;border:2px solid var(--line);border-radius:50%;background:var(--accent)}.turn-banner.thinking .turn-pulse{animation:pulse 1s infinite}.turn-banner.finished{background:var(--accent);color:#171717}
 .board-wrap{position:relative;margin:auto;width:min(100%,650px);aspect-ratio:1}.game-board{display:grid;grid-template-columns:repeat(var(--board-size),1fr);width:100%;height:100%;border:2px solid #171717;background:#d5ac6e;padding:3.1%;box-shadow:8px 8px 0 var(--line)}.board-cell{position:relative;min-width:0;min-height:0;border:0;background:transparent;padding:0;cursor:pointer}.board-cell::before,.board-cell::after{content:"";position:absolute;background:rgba(27,22,16,.68)}.board-cell::before{height:1px;left:0;right:0;top:50%}.board-cell::after{width:1px;top:0;bottom:0;left:50%}.board-cell:not(:disabled):hover{background:rgba(217,255,85,.3)}.grid-dot{position:absolute;z-index:1;left:50%;top:50%;width:3px;height:3px;background:#171717;border-radius:50%;transform:translate(-50%,-50%)}.board-piece{position:absolute;z-index:3;inset:8%;width:84%;height:84%;object-fit:contain;animation:piece-in .2s ease-out}.ttt-board{padding:7%;gap:2px;background:var(--panel)}.ttt-board .board-cell{border:2px solid var(--line)}.ttt-board .board-cell::before,.ttt-board .board-cell::after,.ttt-board .grid-dot{display:none}.ttt-board .board-piece{inset:12%;width:76%;height:76%}.board-cell.latest .board-piece{filter:drop-shadow(0 0 0 var(--accent)) drop-shadow(0 0 5px var(--accent))}.board-cell.latest::marker{color:var(--accent)}.board-cell.winning{background:rgba(217,255,85,.65)}.board-cell.winning .board-piece{transform:scale(1.08)}
 .thinking-mask{position:absolute;z-index:6;inset:0;background:rgba(20,20,20,.25);backdrop-filter:blur(1px);display:grid;place-content:center;text-align:center;color:white;font-weight:900}.thinking-mask span{width:38px;height:38px;border:4px solid rgba(255,255,255,.4);border-top-color:var(--accent);border-radius:50%;margin:auto;animation:spin .8s linear infinite}.board-actions{display:flex;justify-content:center;gap:8px;margin-top:20px;flex-wrap:wrap}.board-actions button,.result-panel button{border:2px solid var(--line);background:var(--panel);color:var(--ink);font-weight:850;padding:10px 18px;cursor:pointer;box-shadow:3px 3px 0 var(--line)}.board-actions button:disabled{opacity:.35;cursor:not-allowed;box-shadow:none}.board-actions .draw-button{background:var(--pink);color:#171717}.board-error{background:#a42b2b;color:white;padding:10px;text-align:center;font-size:12px}.result-panel{margin-top:14px;border:2px solid var(--line);background:var(--accent);color:#171717;padding:18px;text-align:center}.result-panel>strong{display:block;font-size:24px}.result-panel>span{font-size:12px}.result-panel div{display:flex;justify-content:center;gap:8px;margin-top:12px}.result-panel button{background:#fff;color:#171717}
-@keyframes piece-in{from{transform:scale(.7);opacity:0}to{transform:scale(1);opacity:1}}@keyframes spin{to{transform:rotate(360deg)}}@keyframes pulse{50%{transform:scale(1.5);opacity:.5}}
+@keyframes piece-in{from{transform:scale(.7);opacity:0}to{transform:scale(1);opacity:1}}@keyframes piece-expiring{0%,100%{opacity:1}50%{opacity:.25}}@keyframes spin{to{transform:rotate(360deg)}}@keyframes pulse{50%{transform:scale(1.5);opacity:.5}}
 @media(max-width:1050px){.board-main{grid-template-columns:220px 1fr}}
 @media(max-width:720px){.board-topbar{height:58px;padding:0 13px}.board-brand strong{font-size:13px}.board-main{display:flex;flex-direction:column;padding:10px}.play-area,.setup-panel{width:100%}.setup-panel{padding:15px;box-shadow:3px 3px 0 var(--line)}.setup-panel h1,.board-kicker,.board-subtitle,.piece-key{display:none}.setup-panel fieldset{display:inline-block;width:49%;vertical-align:top;margin:0}.option-row span{padding:7px 2px;font-size:10px}.board-wrap{width:min(94vw,650px)}.game-board{box-shadow:4px 4px 0 var(--line)}.turn-banner{margin-top:2px}.board-actions{margin-top:13px}.theme-toggle,.board-back{font-size:11px}.gomoku-board .board-piece{inset:2%;width:96%;height:96%}}
+.board-cell.expiring .board-piece {
+  animation: piece-expiring 1.6s ease-in-out infinite;
+}
 .board-piece {
   rotate: var(--piece-turn, 0deg);
 }
