@@ -11,4 +11,6 @@ footer{border-top:1px solid var(--line);padding:44px 0 56px;text-align:center}
 footer .mark{font-family:var(--serif);letter-spacing:.3em;color:var(--ink-dim);font-size:14px;margin-bottom:10px}
 footer .mark i{color:var(--gold);font-style:normal}
 footer .note{font-size:12px;color:var(--ink-faint);letter-spacing:.1em;line-height:2}
+:global(html[lang="en"]) footer .mark{display:flex;flex-direction:column;align-items:center;gap:4px;letter-spacing:.12em}
+:global(html[lang="en"]) footer .mark i{display:none}
 </style>
