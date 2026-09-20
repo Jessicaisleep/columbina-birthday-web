@@ -1,12 +1,7 @@
 const STORAGE_KEY = 'columbina-language'
 
 function detectLanguage() {
-  let saved = ''
-  try {
-    saved = localStorage.getItem(STORAGE_KEY) || ''
-  } catch {
-    // Storage can be unavailable in private browsing or embedded webviews.
-  }
+  const saved = localStorage.getItem(STORAGE_KEY)
   if (saved === 'zh' || saved === 'en') return saved
   return (navigator.languages || [navigator.language || 'zh-CN'])
     .some((lang) => String(lang).toLowerCase().startsWith('zh')) ? 'zh' : 'en'
@@ -22,15 +17,15 @@ const exact = new Map(Object.entries({
   '一场献给月亮的': 'A Birthday Celebration', '生日企划': 'Dedicated to the Moon',
   '哥伦比娅·希珀塞莱尼娅，前至冬愚人众第三席「': 'Columbina Hyposelenia, formerly the Third of the Fatui Harbingers, “',
   '少女': 'Damselette',
-  '」，如今的三月女神。她生于挪德卡莱的月光之下，歌声与夜色是她与世界之间，最温柔的丝线。而在朋友们的帮助下，她找到了家在何处。': ',” is now one of the Trinity of Moon Goddesses. Born beneath the moonlight of Nod-Krai, her song and the night are the gentlest threads connecting her to the world. With the help of her friends, she finally found where home is.',
+  '」，如今的三月女神。她生于挪德卡莱的月光之下，歌声与夜色是她与世界之间，最温柔的丝线。而在朋友们的帮助下，她找到了家在何处。': ',” is now the Trilune Goddess. Born beneath the moonlight of Nod-Krai, her song and the night are the gentlest threads connecting her to the world. With the help of her friends, she finally found where home is.',
   '一场献给月亮的\n生日企划': 'A Birthday Celebration\nDedicated to the Moon',
-  '哥伦比娅·希珀塞莱尼娅，前至冬愚人众第三席「少女」，如今的三月女神。她生于挪德卡莱的月光之下，歌声与夜色是她与世界之间，最温柔的丝线。而在朋友们的帮助下，她找到了家在何处。': 'Columbina Hyposelenia, formerly the Third of the Fatui Harbingers, “Damselette,” is now one of the Trinity of Moon Goddesses. Born beneath the moonlight of Nod-Krai, her song and the night are the gentlest threads connecting her to the world. With the help of her friends, she finally found where home is.',
-  '「月下的世界终将再次明朗」': '“The world beneath the moon shall shine bright once more.”',
+  '哥伦比娅·希珀塞莱尼娅，前至冬愚人众第三席「少女」，如今的三月女神。她生于挪德卡莱的月光之下，歌声与夜色是她与世界之间，最温柔的丝线。而在朋友们的帮助下，她找到了家在何处。': 'Columbina Hyposelenia, formerly the Third of the Fatui Harbingers, “Damselette,” is now the Trilune Goddess. Born beneath the moonlight of Nod-Krai, her song and the night are the gentlest threads connecting her to the world. With the help of her friends, she finally found where home is.',
+  '「月下的世界终将再次明朗」': '“The world beneath the moon shall be bright once more.”',
   '—— 2027 · 三月交辉之时': '— 2027 · When the Three Moons Shine as One',
   '哥伦比娅·希珀塞莱尼娅': 'Columbina Hyposelenia', '角色档案': 'CHARACTER PROFILE',
   '她是天，她是光，我们唯一的信仰': 'She is the sky, she is the light, our one and only faith',
   '前愚人众第三席，代号：「少女」': 'Former Third of the Fatui Harbingers, codenamed “Damselette”',
-  '三月女神': 'The Trinity of Moon Goddesses', '生日：1月14日': 'Birthday: January 14',
+  '三月女神': 'Trilune Goddess', '生日：1月14日': 'Birthday: January 14',
   '标志：镂空眼罩 · 翅膀头饰': 'Signature: Hollow eye veil · Winged headdress',
   '家：挪德卡莱·银月之庭': 'Home: Silvermoon Hall, Nod-Krai',
   '企划内容': 'Celebration Projects', '以下产出将于生日当天（1月14日）一同公开。': 'The following works will be released together on her birthday, January 14.',
@@ -152,11 +147,7 @@ function addSwitcher() {
   box.querySelectorAll('button').forEach((button) => button.addEventListener('click', () => {
     const next = button.dataset.lang
     if (next === language) return
-    try {
-      localStorage.setItem(STORAGE_KEY, next)
-    } catch {
-      // The current page can still be switched even when persistence is blocked.
-    }
+    localStorage.setItem(STORAGE_KEY, next)
     window.location.reload()
   }))
   document.body.appendChild(box)
@@ -169,7 +160,18 @@ export function initLocalization() {
   document.title = "Where Feathers Bloom in the New Moon's Dream · Columbina Birthday Celebration"
   const description = document.querySelector('meta[name="description"]')
   if (description) description.content = 'A fan-made birthday celebration for Columbina Hyposelenia from Genshin Impact.'
-  // Translate the initial Vue render once. A global MutationObserver races Vue's
-  // updates and can repeatedly rewrite the same tree on the landing page.
   translateElement(document.body)
+  const observer = new MutationObserver((mutations) => mutations.forEach((mutation) => {
+    if (mutation.type === 'characterData') {
+      const next = translated(mutation.target.nodeValue)
+      if (next !== mutation.target.nodeValue) mutation.target.nodeValue = next
+    } else if (mutation.type === 'attributes') translateElement(mutation.target)
+    else mutation.addedNodes.forEach((node) => {
+      if (node.nodeType === Node.TEXT_NODE) {
+        const next = translated(node.nodeValue)
+        if (next !== node.nodeValue) node.nodeValue = next
+      } else if (node.nodeType === Node.ELEMENT_NODE) translateElement(node)
+    })
+  }))
+  observer.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['aria-label', 'title', 'placeholder', 'alt'] })
 }
