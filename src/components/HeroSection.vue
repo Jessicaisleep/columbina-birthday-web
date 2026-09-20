@@ -24,7 +24,7 @@
 
 <script setup>
 import { ref, onMounted, onBeforeUnmount } from 'vue'
-import heroLogoZh from '../assets/hero-logo-cn.png'
+import heroLogoZh from '../assets/hero-logo.webp'
 import { isEnglish } from '../i18n.js'
 import { useCountdown } from '../composables/useCountdown'
 
