@@ -7,7 +7,7 @@ import flightJump from '../p/columbina-flight-default.png'
 import boardPieceHuman from '../p/board-piece-player-purple.png'
 import boardPieceAi from '../p/board-piece-columbina-pink.png'
 import eventHero from '../p/event/hero.jpg'
-import eventLogo from '../p/event/logo.webp'
+import eventLogoZh from '../p/event/logo-cn.png'
 import heroMotion from '../p/event/hero-motion.mp4'
 import moonObstacle from '../p/event/moon-obstacle.webp'
 import boardBackground from '../p/event/board-background.webp'
@@ -32,6 +32,9 @@ import { playVoice, stopVoice, VOICE_EVENTS } from './games/voice.js'
 import { loadAssetGroup } from './games/resourceLoader.js'
 import RunnerGame from './components/RunnerGame.vue'
 import BoardGame from './components/BoardGame.vue'
+import { isEnglish } from './i18n.js'
+
+const eventLogo = isEnglish ? './english-logo.png' : eventLogoZh
 
 const screen = ref('lobby')
 const assetLoading = ref({ active: false, title: '', loaded: 0, total: 0, error: '' })
