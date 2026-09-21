@@ -151,3 +151,23 @@
   color: #111b48;
   background: #fff;
 }
+
+.language-switcher {
+  position: absolute; z-index: 10020; top: max(88px, calc(env(safe-area-inset-top) + 76px)); right: max(18px, env(safe-area-inset-right));
+  display: flex; align-items: center; gap: 8px; padding: 7px 10px; border: 1px solid rgba(255,255,255,.42); border-radius: 999px;
+  background: linear-gradient(135deg, rgba(30,43,104,.88), rgba(93,39,101,.82)); box-shadow: 0 10px 32px rgba(4,8,38,.34), inset 0 0 18px rgba(255,255,255,.08);
+  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); color: #fff; font-family: 'Genshin', system-ui, sans-serif;
+}
+.language-switcher > span { color: #ffe2a6; font-size: 11px; filter: drop-shadow(0 0 7px rgba(255,226,166,.9)); }
+.language-switcher i { width: 1px; height: 14px; background: rgba(255,255,255,.3); }
+.language-switcher button { border: 0; background: none; color: rgba(255,255,255,.66); font: 600 12px/1 inherit; letter-spacing: .06em; padding: 5px 7px; border-radius: 99px; cursor: pointer; transition: .25s; }
+.language-switcher button:hover { color: #fff; }
+.language-switcher button.active { color: #fff; background: rgba(255,255,255,.2); box-shadow: 0 0 14px rgba(255,255,255,.12); }
+@media (max-width: 700px) { .language-switcher { top: max(74px, calc(env(safe-area-inset-top) + 64px)); right: max(10px, env(safe-area-inset-right)); transform: scale(.88); transform-origin: top right; } }
+
+html[lang="en"] .section-heading h1{font-size:clamp(36px,5vw,64px);letter-spacing:.08em;white-space:nowrap}
+html[lang="en"] .card-body h2{font-size:clamp(22px,2.15vw,31px);letter-spacing:.035em;white-space:nowrap}
+html[lang="en"] .setup-panel{min-width:0;overflow:hidden}
+html[lang="en"] .setup-panel h1{max-width:100%;font-size:clamp(22px,2.25vw,31px);line-height:1.12;letter-spacing:.02em;white-space:normal;overflow-wrap:anywhere}
+html[lang="en"] .board-subtitle{line-height:1.45}
+@media(max-width:900px){html[lang="en"] .section-heading h1{font-size:clamp(32px,5vw,48px)}html[lang="en"] .card-body h2{font-size:22px}}

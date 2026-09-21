@@ -24,8 +24,11 @@
 
 <script setup>
 import { ref, onMounted, onBeforeUnmount } from 'vue'
-import heroLogo from '../assets/hero-logo.webp'
+import heroLogoZh from '../assets/hero-logo-cn.png'
+import { isEnglish } from '../i18n.js'
 import { useCountdown } from '../composables/useCountdown'
+
+const heroLogo = isEnglish ? './english-logo.png' : heroLogoZh
 
 /* 标题：cover 映射动态定位（基于 4096×2304 原图） */
 const ORIG_W = 4096, ORIG_H = 2304
