@@ -171,3 +171,9 @@ html[lang="en"] .setup-panel{min-width:0;overflow:hidden}
 html[lang="en"] .setup-panel h1{max-width:100%;font-size:clamp(22px,2.25vw,31px);line-height:1.12;letter-spacing:.02em;white-space:normal;overflow-wrap:anywhere}
 html[lang="en"] .board-subtitle{line-height:1.45}
 @media(max-width:900px){html[lang="en"] .section-heading h1{font-size:clamp(32px,5vw,48px)}html[lang="en"] .card-body h2{font-size:22px}}
+
+/* DREAM 05 · 提瓦特战力党：卡面结构与另外四张完全一致，只是横跨两列 ——
+   否则 2 列网格里第 5 张会独占第 3 行左半、右边空半格。移动端本来就是单列，
+   下面的覆盖让它保持原样。 */
+.dice-card{grid-column:1/-1}
+@media(max-width:800px){.dice-card{grid-column:auto}}
