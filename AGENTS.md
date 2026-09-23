@@ -113,7 +113,12 @@ pwsh scripts/deploy.ps1 -DryRun         # 只构建/打包/上传/备份，不�
    ```
 9. 本机 `pwsh`（PowerShell 7）在受限 shell 里**不可用** → 用 `& ./scripts/deploy.ps1` 在会话内调用。
 10. **`npm run build` 需要 esbuild 以管道 spawn 子进程**，受限沙箱下报 `Error: spawn EPERM`（与坑 6 同源：沙箱禁止创建管道）→ 构建需在放宽权限下执行。
-11. 本机 git 默认 `http.sslBackend=schannel` 会握手失败（`SEC_E_NO_CREDENTIALS`）→ 加 `-c http.sslBackend=openssl`。
+11. 沙箱下 git 默认 `http.sslBackend=schannel` 会握手失败（`SEC_E_NO_CREDENTIALS`）→ 加 `-c http.sslBackend=openssl`。
+    **2026-09-22 复测：这不是机器故障，是代理沙箱造成的假象。** 沙箱不让访问 Windows 凭据/加密存储，
+    同一个原因还会让 `Invoke-WebRequest` 报 SSL 连接失败、让 git 的凭据助手（GCM）报 `couldn't create signal pipe`。
+    **放开沙箱（danger-full-access）后实测：`.NET/schannel → HTTP 200`、`git http.sslBackend=schannel → exit=0`，两者都正常。**
+    所以：**不要动注册表、不要动证书存储去"修"它**（给不存在的问题做手术只会制造真问题）；
+    加 `-c http.sslBackend=openssl` 只是沙箱内的绕行手段，不是本机需要长期保留的配置。
 12. **DSH 的 bash 工具会突然整个失效**（任何命令都报 `subprocess-local: command "C:\Program Files\Git\bin\bash.exe" is not an executable file`）：
     DSH 进程的环境里记着 Git 的**旧安装路径**，而 Git 实际装在 `D:\Git`（PATH 里只有 `d:\Git\cmd`，没有 `Git\bin`）。修法一行（管理员 PowerShell）：
     ```powershell

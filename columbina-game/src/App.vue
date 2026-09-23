@@ -32,6 +32,8 @@ import { playVoice, stopVoice, VOICE_EVENTS } from './games/voice.js'
 import { loadAssetGroup } from './games/resourceLoader.js'
 import RunnerGame from './components/RunnerGame.vue'
 import BoardGame from './components/BoardGame.vue'
+import TeyvatDiceGame from './components/TeyvatDiceGame.vue'
+import { DICE_ASSETS, DICE_COVER } from './games/teyvatDice.js'
 import { isEnglish } from './i18n.js'
 
 const eventLogo = isEnglish ? './english-logo.png' : eventLogoZh
@@ -64,8 +66,9 @@ const assetGroups = {
   stageTwo: [stageTwo, stageMusicTwo],
   stageThree: [stageThree, stageMusicThree],
   stageFour: [stageFour, stageMusicFour],
+  diceCore: DICE_ASSETS,
 }
-const backgroundPreloadOrder = ['flightCore', 'runnerCore', 'tictactoeCore', 'gomokuCore', 'stageTwo', 'stageThree', 'stageFour']
+const backgroundPreloadOrder = ['flightCore', 'runnerCore', 'tictactoeCore', 'gomokuCore', 'stageTwo', 'stageThree', 'stageFour', 'diceCore']
 const currentStageBackground = computed(() => stageBackgrounds[Math.floor(score.value / 10) % stageBackgrounds.length])
 
 /* 部分国产浏览器（QQ / 夸克 / UC / 百度等）横屏时会把页面里的 <video> 劫持成
@@ -156,6 +159,7 @@ function applyBgm() {
   if (screen.value === 'lobby') setBgm(lobbyMusic)
   else if (screen.value === 'game') setBgm(stageMusic[index % 4])
   else if (screen.value === 'board') setBgm(stageMusicThree)
+  else if (screen.value === 'dice') setBgm(stageMusicThree)
 }
 watch([screen, () => Math.floor(score.value / 10)], applyBgm, { immediate: true })
 function preloadStage(index) { const image = new Image(); image.src = stageBackgrounds[index % stageBackgrounds.length] }
@@ -328,6 +332,24 @@ function openBoard(kind) {
 
 function closeBoard() {
   stopVoice()
+  screen.value = 'lobby'
+  nextTick(() => window.scrollTo({ top: 0, behavior: 'instant' }))
+}
+
+/* 提瓦特战力党：零依赖单文件游戏，用 iframe 承载（见 TeyvatDiceGame.vue）。
+   和另外四个游戏一样先把资源预热完再切屏；预热用的 URL 带同一个 ?v= 后缀，
+   所以 iframe 打开时直接命中缓存、基本瞬开。 */
+function openDice() {
+  playSfx('ui')
+  stopVoice()
+  cancelAnimationFrame(animationFrame)
+  prepareAssetGroup('diceCore', '提瓦特战力党', () => {
+    screen.value = 'dice'
+    nextTick(() => window.scrollTo({ top: 0, behavior: 'instant' }))
+  })
+}
+
+function closeDice() {
   screen.value = 'lobby'
   nextTick(() => window.scrollTo({ top: 0, behavior: 'instant' }))
 }
@@ -594,7 +616,7 @@ onBeforeUnmount(() => {
           <div class="hero-content">
             <p class="hero-kicker">「新月再梦听羽生」主题游戏</p>
             <img class="event-logo" :src="eventLogo" alt="新月再梦听羽生 · 哥伦比娅生日会" />
-            <p class="hero-copy">循着月光进入她的梦境。四段旅程，四种相遇，<br />在羽声落下之前，与哥伦比娅共度这一夜。</p>
+            <p class="hero-copy">循着月光进入她的梦境。五段旅程，五种相遇，<br />在羽声落下之前，与哥伦比娅共度这一夜。</p>
             <a class="hero-cta" href="#games"><span>进入梦境游廊</span><b>↓</b></a>
           </div>
           <div class="hero-scroll"><span></span>SCROLL TO DREAM</div>
@@ -602,7 +624,7 @@ onBeforeUnmount(() => {
 
         <div id="games" class="lobby-content">
           <div class="section-heading">
-            <div><p class="eyebrow">DREAM ARCADE · 04</p><h1>月下游廊</h1></div>
+            <div><p class="eyebrow">DREAM ARCADE · 05</p><h1>月下游廊</h1></div>
             <p class="intro">选择一段梦境，与她一同飞行、奔跑，或在月色中落下一枚棋子。</p>
           </div>
 
@@ -715,6 +737,40 @@ onBeforeUnmount(() => {
                 <button class="enter-button" type="button" @click.stop="openBoard('gomoku')">找哥伦比娅下棋 <span>↗</span></button>
               </div>
             </article>
+
+            <!-- DREAM 05：提瓦特战力党。卡面结构与上面四张完全一致，
+                 只是横跨两列（grid-column:1/-1），否则第 3 行会空半格。 -->
+            <article
+              class="game-card featured dice-card"
+              role="button"
+              tabindex="0"
+              @click="openDice"
+              @keydown.enter="openDice"
+              @keydown.space.prevent="openDice"
+            >
+              <div
+                class="card-art game-cover"
+                :style="{
+                  backgroundImage: `url('${DICE_COVER}')`,
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center 42%',
+                  backgroundRepeat: 'no-repeat',
+                }"
+              >
+                <span class="cover-vignette"></span>
+                <span class="play-orbit"><span>05</span><b>进入</b></span>
+              </div>
+              <div class="card-body">
+                <div>
+                  <p class="card-number">DREAM 05 · DICE</p>
+                  <h2>提瓦特战力党</h2>
+                  <p>十二位提瓦特角色，投骰、选骰、重投，在攻防之间决出胜负。</p>
+                </div>
+                <button class="enter-button" type="button" @click.stop="openDice">
+                  开始游戏 <span>↗</span>
+                </button>
+              </div>
+            </article>
           </div>
 
           <section class="lobby-stats" aria-label="我的棋类战绩">
@@ -808,6 +864,7 @@ onBeforeUnmount(() => {
       </section>
 
       <RunnerGame v-else-if="screen === 'runner'" key="runner" @back="returnToLobby" />
+      <TeyvatDiceGame v-else-if="screen === 'dice'" key="dice" @back="closeDice" />
       <BoardGame v-else :key="`board-${boardKind}-${boardSessionKey}`" :kind="boardKind" @back="closeBoard" @reload="reloadBoard" @result="saveBoardResult" />
     </Transition>
 
