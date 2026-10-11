@@ -297,17 +297,13 @@ async function swapCells(firstIndex, secondIndex) {
   const second = board.value[secondIndex]
   let directTargets = null
   let alreadyTriggered = new Set()
-  if (first.special && second.special) {
+  // 来源：PR #69 分支上的修复（7eade48「调整特殊方块交换触发规则」）。
+  // 原逻辑（main #65 引入）：任意特殊块交换都能不形成匹配就触发效果 → 相当于白送一次特效。
+  // 修复后：只有彩球（color-bomb）可这样直接触发；其余情况若交换后没形成匹配，
+  //         就回退这次交换并 return false，不消耗步数。
+  if (first.special === 'color-bomb' || second.special === 'color-bomb') {
     directTargets = getComboTargets(firstIndex, secondIndex)
     alreadyTriggered = new Set([firstIndex, secondIndex])
-  } else if (first.special || second.special) {
-    const specialIndex = first.special ? firstIndex : secondIndex
-    const normalIndex = first.special ? secondIndex : firstIndex
-    const specialTile = board.value[specialIndex]
-    const normalTile = board.value[normalIndex]
-    directTargets = new Set(getSpecialEffect(board.value, specialIndex, normalTile?.type))
-    directTargets.add(specialIndex)
-    alreadyTriggered = new Set([specialIndex])
   } else if (getMatchGroups(board.value).length === 0) {
     const reverted = [...board.value]
     ;[reverted[firstIndex], reverted[secondIndex]] = [reverted[secondIndex], reverted[firstIndex]]
