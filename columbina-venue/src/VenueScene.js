@@ -2109,11 +2109,28 @@ export default class VenueScene extends Phaser.Scene {
     //   旧写法直接 `已经拿到了 → return`，于是计数器永远补不上，
     //   委托永远差 1 个 —— 用户 2026-10-05 报的就是这个。
     //   现在：身上有道具但任务计数还是 0 时，不再重复发道具，但**把计数补上**。
+    //
+    // ★ 2026-10-12 修第二个 bug：同一条委托可以有多个点位共用同一个 collectId
+    //   （伊涅芙 5 处小物件 / 芙宁娜 3 处灯座 / 林尼 3 朵虹彩蔷薇）。
+    //   旧写法去重是「身上有这个道具 && 计数 >= 1」，捡到第 1 个之后
+    //   第 2 个点就被挡回去了 —— 5 个点只能捡到 1 个，委托做不完。
+    //   现在分成两道：
+    //     ① 点位级 —— 这个交互点本身采过没有（QuestSystem.isPointTaken）
+    //     ② 道具级 —— 需要的数量凑齐没有（counted >= need）
     const qid = p.questId;
+    const q = qid ? QUESTS.find((x) => x.id === qid) : null;
+    const need = (q && q.target && q.target.count) || 1;
     const counted = qid ? this.quests.getCounter(qid) : 1;
     const alreadyHas = this.hasItem(p.collectId) && !p.repeatable;
 
-    if (alreadyHas && counted >= 1) {
+    // ① 这个点位已经采过了（换场景再回来也不会重复刷）
+    if (qid && this.quests.isPointTaken(p.id)) {
+      this.toast(p.doneHint || '已经拿到了');
+      return;
+    }
+
+    // ② 需要的数量已经凑齐了
+    if (alreadyHas && counted >= need) {
       this.toast(p.doneHint || '已经拿到了');
       return;
     }
@@ -2124,6 +2141,11 @@ export default class VenueScene extends Phaser.Scene {
       }
       this.quests.markCollect(p.collectId, 1);
     }
+    // 登记这个点位已经采过 —— 必须在 markCollect 之后，
+    // 否则中途抛错会留下「点没了、东西也没给」的状态。
+    // 只登记真正产出道具的点（个别点只是「站一会儿」，没有 collectId，
+    // 那种点允许反复按，不该被登记成已采集）
+    if (qid && p.collectId) this.quests.markPointTaken(p.id);
     if (p.okText) {
       this.dialog.open(
         { name: p.label || '采集', portrait: '✋', portraitBg: '#2a3a2e' },
@@ -2254,6 +2276,24 @@ export default class VenueScene extends Phaser.Scene {
     });
   }
 
+  /**
+   * 把一条委托的 offerLine / progressLine / deliverLine 推进对话队列
+   *
+   * 这三个字段是《文案总表》第二部分建议的**可选**字段：
+   * 填了就让这位 NPC 用自己的语气把话说出口，不填就沿用通用模板 ——
+   * 所以 5 条老委托和 9 条新委托都兼容，以后加委托也可以不填。
+   *
+   * 支持 string（一句话）和 string[]（一串独白）两种写法：
+   *   林尼的接取台词是 4 句连着说的，挤成一行就变成一段没有人称的说明书。
+   */
+  pushQuestLines(lines, value) {
+    if (!value) return;
+    const arr = Array.isArray(value) ? value : [value];
+    for (const t of arr) {
+      if (t) lines.push({ text: t });
+    }
+  }
+
   buildDialogLines(npc) {
     // ★ 围坐形态走另一套话（用户 m09394）
     //
@@ -2275,14 +2315,25 @@ export default class VenueScene extends Phaser.Scene {
 
       // 可接取
       if (isGiver && state === 'available') {
+        // ★ offerLine：NPC 自己先开口（文案总表第二部分建议的可选字段）
+        //
+        //   为什么要有它：
+        //     通用模板「对了，有件事想请你帮忙。」是第三人称的旁白腔，
+        //     谁来发任务都是同一句 —— 人设全丢了。
+        //     offerLine 是这位 NPC 用自己的语气把这件事说出口。
+        //   有 offerLine 时去掉那句旁白式的开场白（NPC 已经说过了），
+        //   只留「委托卡」本身：标题 + 描述 + 奖励 + 接取按钮。
+        this.pushQuestLines(lines, q.offerLine);
         lines.push({
-          text: `对了，有件事想请你帮忙。\n【${q.title}】\n${q.desc}\n完成后给你：${q.reward}`,
+          text: `${q.offerLine ? '' : '对了，有件事想请你帮忙。\n'}`
+              + `【${q.title}】\n${q.desc}\n完成后给你：${q.reward}`,
           link: { label: '接下委托', action: 'accept', questId: q.id },
         });
       }
 
       // 进行中
       if (isGiver && state === 'active') {
+        this.pushQuestLines(lines, q.progressLine);
         lines.push({
           text: `【${q.title}】还在进行中\n${this.questHint(q)}`,
         });
@@ -2290,6 +2341,7 @@ export default class VenueScene extends Phaser.Scene {
 
       // 可交付
       if (isDeliver && state === 'ready') {
+        this.pushQuestLines(lines, q.deliverLine);
         lines.push({
           text: `【${q.title}】\n你办好了！这是答应给你的谢礼：${q.reward}`,
           link: { label: '交付委托', action: 'deliver', questId: q.id },
@@ -2496,7 +2548,13 @@ export default class VenueScene extends Phaser.Scene {
 
       if (dx <= r && dy <= r) {
         // 到达目标点
-        this.quests.markVisit(q.id);
+        //
+        // ★ 2026-10-12 修的 bug：这里原来传的是 q.id，
+        //   而 QuestSystem.markVisit(tileX, tileY) 收的是**格子坐标** ——
+        //   传进去一个字符串，里面两句 Math.abs(q.target.tileX - 'q-xxx') 全是 NaN，
+        //   判断恒不成立，计数器永远不动 → visit 型委托永远卡在 active。
+        //   格子坐标上面两行（tx / ty）就已经算好了，直接传。
+        this.quests.markVisit(tx, ty);
         this.gainToast(t.needLabel || '任务物品');
         return;
       }

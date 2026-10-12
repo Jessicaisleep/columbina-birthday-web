@@ -166,11 +166,16 @@ const r = await p.evaluate(async () => {
   steps.dialogLinks = lines.filter((l) => l.link).map((l) => l.link.label);
   steps.hasDeliverLink = steps.dialogLinks.includes('交付委托');
 
-  // ---- F. 五个委托的「跨天重置」死锁逐个验一遍 ----
-  //    打水走 doExchangeItem，其余四个走 doCollectItem ——
-  //    两条路都得能自愈，否则换一个委托又会卡住。
+  // ---- F. 采集类委托的「跨天重置」死锁逐个验一遍 ----
+  //    打水走 doExchangeItem，其余走 doCollectItem —— 两条路都得能自愈。
+  //
+  //    ★ 2026-10-12 更新：文案总表落地后委托从 5 条变 14 条，其中
+  //      · talk（q-arlecchino-check）由 markTalked 完成，没有采集点；
+  //      · visit（q-traveler-far）由 handleQuestVisit 完成，点位不给 collectId；
+  //      · 多条委托 count > 1（虹彩蔷薇 ×3 / 月灵灯 ×3 / 小物件 ×5）。
+  //      所以这里只验 collect 类，且按各自 need 判断「按一次 E 之后」的期望值。
   const { INTERACT_POINTS } = await import('/src/quests.js');
-  const side = QUESTS.filter((x) => x.giverNpcId);
+  const side = QUESTS.filter((x) => x.giverNpcId && x.target && x.target.type === 'collect');
   steps.F = [];
   for (const q of side) {
     const ip = INTERACT_POINTS.find((x) => x.questId === q.id);
@@ -185,13 +190,15 @@ const r = await p.evaluate(async () => {
     // 跨天：任务重置、物品保留
     s.quests.data.states[q.id] = 'active';
     s.quests.data.counters[q.id] = 0;
+    if (s.quests.data.takenPoints) s.quests.data.takenPoints = {};
     s.quests.save();
     s.clearItems();
 
     const itemId = ip.collectId || (q.target && q.target.itemId);
     s.giveItem(itemId, '测试道具');
 
-    const b4 = { state: s.quests.getState(q), counter: s.quests.getCounter(q.id) };
+    const need = q.target.count || 1;
+    const b4 = { state: s.quests.getState(q), counter: s.quests.getCounter(q.id), need };
     s.player.x = pt2.x;
     s.player.y = pt2.y + 40;
     const near = await waitActive(ip.id);
@@ -199,16 +206,12 @@ const r = await p.evaluate(async () => {
     await new Promise((res) => setTimeout(res, 350));
     const af = { state: s.quests.getState(q), counter: s.quests.getCounter(q.id) };
 
+    // 按一次 E 之后：计数必须补上 1 点；只有 need=1 的才该直接 ready
+    const wantState = need === 1 ? 'ready' : 'active';
     steps.F.push({
-      id: q.id,
-      ip: ip.id,
-      scene: ip.scene,
-      action: ip.action,
-      itemId,
-      near,
-      before: b4,
-      after: af,
-      ok: near && af.counter >= 1 && af.state === 'ready',
+      id: q.id, ip: ip.id, scene: ip.scene, action: ip.action, itemId, need, near,
+      before: b4, after: af,
+      ok: near && af.counter === 1 && af.state === wantState,
     });
   }
 
@@ -251,11 +254,11 @@ if (r.missing) {
   console.log(`   对话里的功能入口: ${JSON.stringify(s.dialogLinks)}`);
   ok(s.hasDeliverLink, '委托 ready 时，奈芙尔对话里出现「交付委托」按钮');
 
-  console.log('\n===== F. 五个委托的「跨天重置」自愈 =====');
+  console.log('\n===== F. 采集类委托的「跨天重置」自愈 =====');
   for (const f of s.F) {
     if (f.why) { ok(false, `${f.id} —— ${f.why}`); continue; }
-    console.log(`   ${f.id.padEnd(22)} ${f.scene.padEnd(8)} ${String(f.action).padEnd(12)} ${f.before.state}/${f.before.counter} → ${f.after.state}/${f.after.counter}`);
-    ok(f.ok, `${f.id}：物品还在但计数为 0 时，按 E 补计数并转 ready`);
+    console.log(`   ${f.id.padEnd(22)} ${f.scene.padEnd(8)} ${String(f.action).padEnd(12)} need=${f.need} ${f.before.state}/${f.before.counter} → ${f.after.state}/${f.after.counter}`);
+    ok(f.ok, `${f.id}（need=${f.need}）：物品还在但计数为 0 时，按 E 补计数${f.need === 1 ? '并转 ready' : '（未集满仍 active）'}`);
   }
 }
 

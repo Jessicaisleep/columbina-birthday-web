@@ -168,19 +168,62 @@ ok(badEnter === 0, `物理测试：没有人能走进 NPC 的模型盒子（失�
 ok(noStand === 0, `每个 NPC 旁边都留了可走格给主角站（缺失 ${noStand}）`);
 
 // ---- 委托 NPC 地图 ≠ 委托物品地图 -----------------------------------------
+//  ★ 2026-10-12 修订：委托从 5 条涨到 14 条，`q.scene` 只是「登记场景」，
+//    一律写 'venue'，不能再拿它当「物品地图」用 —— 真正的物品地图得看交互点。
+//    改名后的判据按类型分别取：
+//      collect -> 该委托交互点的 scene
+//      talk    -> 目标 NPC 所在 scene
+//      visit   -> target.scene
+//    另外文案本身就把三条锁死在同一张地图里（阿蕾奇诺要找的林尼也在会场、
+//    那维莱特点名的「冰原月泉」就在冰原、芙宁娜点名的「彩池月灵灯」就在彩池），
+//    所以这三条属于【设计允许的例外】，显式列出来而不是放宽断言。
+const SAME_SCENE_OK = [
+  '【委托】赏罚皆自我出',        // 阿蕾奇诺@venue → 林尼@venue（跨半张会场，同图）
+  '【委托】雨檐之下的一滴水',    // 那维莱特@icefield → 冰原月泉
+  '【委托】导演的第一条指示：灯', // 芙宁娜@pools → 彩池月灵灯
+];
 const t1b = await p.evaluate(async () => {
-  const s = window.__venueScene;
-  const { QUESTS } = await import('/src/quests.js');
+  const { QUESTS, INTERACT_POINTS } = await import('/src/quests.js');
   const { NPCS } = await import('/src/config.js');
+  const sceneOfNpc = (id) => {
+    const n = NPCS.find((x) => x.id === id);
+    return n ? (n.scene || 'venue') : '?';
+  };
   return QUESTS.filter((q) => !q.special && q.giverNpcId).map((q) => {
-    const n = NPCS.find((x) => x.id === q.giverNpcId);
-    return { quest: q.title, npc: n ? n.name : q.giverNpcId, npcScene: n ? (n.scene || 'venue') : '?', propScene: q.scene };
+    const giver = NPCS.find((x) => x.id === q.giverNpcId);
+    const npcScene = giver ? (giver.scene || 'venue') : '?';
+    let itemScene = '?';
+    let via = '';
+    if (q.target.type === 'collect') {
+      const ip = INTERACT_POINTS.find((x) => x.questId === q.id);
+      itemScene = ip ? ip.scene : '(无交互点)';
+      via = ip ? ip.id : '';
+    } else if (q.target.type === 'talk') {
+      itemScene = sceneOfNpc(q.target.npcId);
+      via = q.target.npcId;
+    } else if (q.target.type === 'visit') {
+      itemScene = q.target.scene;
+      via = `tile(${q.target.tileX},${q.target.tileY})`;
+    }
+    return {
+      id: q.id, quest: q.title, type: q.target.type,
+      npc: giver ? giver.name : q.giverNpcId, npcScene, itemScene, via,
+    };
   });
 });
 console.log('\n===== 任务1：委托 NPC 地图 ≠ 委托物品地图 =====');
-for (const r of t1b) console.log(`  ${r.quest}：${r.npc}@${r.npcScene}  物品@${r.propScene}`);
-ok(t1b.every((r) => r.npcScene !== r.propScene),
-   `5 个委托全部满足「NPC 地图 ≠ 物品地图」（违反 ${t1b.filter((r) => r.npcScene === r.propScene).length} 个）`);
+for (const r of t1b) {
+  const flag = r.npcScene === r.itemScene ? '（同图 · 文案指定）' : '';
+  console.log(`  ${r.quest}：${r.npc}@${r.npcScene}  →  ${r.type}@${r.itemScene}  ${r.via} ${flag}`);
+}
+const same = t1b.filter((r) => r.npcScene === r.itemScene);
+const cross = t1b.filter((r) => r.npcScene !== r.itemScene);
+const sameIds = same.map((r) => r.quest).sort();
+const expectIds = [...SAME_SCENE_OK].sort();
+ok(cross.length === 11 && same.length === 3,
+   `14 条 NPC 委托：${cross.length} 条跨地图 + ${same.length} 条同地图（文案指定）`);
+ok(JSON.stringify(sameIds) === JSON.stringify(expectIds),
+   `同地图的三条就是文案锁死的那三条（实际 ${sameIds.join('、') || '无'}）`);
 
 // ===========================================================================
 // 任务4 —— 合影（必须在「还没开庆功宴」的常态下测：接委托时才有合影选项）
