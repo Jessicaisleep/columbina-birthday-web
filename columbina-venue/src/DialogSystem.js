@@ -45,7 +45,8 @@ export default class DialogSystem {
     window.addEventListener('keydown', (e) => {
       if (!this.isOpen()) return;
 
-      if (e.key === ' ' || e.key === 'Enter' || e.key.toLowerCase() === 'e') {
+      // 推进对话：空格 / 回车 / F（与场景里的互动键一致，2026-10-12 由 E 改 F）
+      if (e.key === ' ' || e.key === 'Enter' || e.key.toLowerCase() === 'f') {
         e.preventDefault();
         this.advance();
       } else if (e.key === 'Escape') {

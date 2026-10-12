@@ -1,14 +1,14 @@
 /**
  * 交互点系统
  *
- * 场景里的「走到附近按 E」的功能点：
+ * 场景里的「走到附近按 F」的功能点：
  *   - 书桌：写邀请函
  *   - 信箱：投递邀请函
  *   - 池塘水边、花丛等：任务目标（只是看看）
  *
  * 与 NPC 的区别：
  *   NPC 是活的角色，有对话；
- *   交互点是静物，按 E 直接执行动作。
+ *   交互点是静物，按 F 直接执行动作。
  */
 
 import { TILE_SIZE } from './config.js';
@@ -135,7 +135,7 @@ export default class InteractPointSystem {
       //
       //   默认行为（见 update()）是把 marker 压暗到 0.06，表示"这里以后有用" ——
       //   信箱就适合这种。但书桌在 11 封写完之后是彻底没用了，
-      //   留一个暗图标 + 暗 marker 会让玩家以为还能按 E，按下去却没反应，
+      //   留一个暗图标 + 暗 marker 会让玩家以为还能按 F，按下去却没反应，
       //   正是用户 2026-10-04 反馈的那类卡顿。这类点直接不出现。
       if (def.hideWhenUnavailable && !this.requiresMet(def.requires)) return;
 
@@ -276,7 +276,7 @@ export default class InteractPointSystem {
     let nd = Infinity;
 
     for (const p of this.points) {
-      // ★ 委托已完成 -> 整个点位从地图上消失
+      // ① 委托已完成 -> 整个点位从地图上消失
       if (this.isQuestDone(p)) {
         p.labelObj.setVisible(false);
         p.marker.setVisible(false);
@@ -284,10 +284,28 @@ export default class InteractPointSystem {
         continue;
       }
 
-      // 判断这个点当前是否可交互（前置条件是否满足）
+      // ② 委托还没接 -> 也整个消失（2026-10-12 用户要求）
+      //
+      //   ★ 以前这里的做法是「留一个压暗到 0.06 的暗斑，表示这里以后有用」，
+      //     但那会先把「林尼要的虹彩蔷薇就在这儿」剧透给玩家 ——
+      //     委托还没接，玩家已经知道哪张图上有东西可以捡了。
+      //     现在改成：接委托之前，点位完全不存在（连暗斑都没有）；
+      //     接完立刻出现（update() 每帧重新问一次，所以和发布人同场景也能立刻冒出来）；
+      //     交完再消失（上面 ①）。
+      //
+      //   ★ 没有 questId 的点（书桌 / 信箱两条主线、以及自动接取的切蛋糕）不受影响：
+      //     isQuestAccepted() 对它们直接返回 true。
+      if (!this.isQuestAccepted(p)) {
+        p.labelObj.setVisible(false);
+        p.marker.setVisible(false);
+        if (p.icon) p.icon.setVisible(false);
+        continue;
+      }
+
+      // ③ requires 不满足（前置剧情还没到）-> 只是压暗，不是隐藏
+      //    让玩家知道"这里以后有用"。书桌写完之后、信箱还没到投递点时就是这种。
       if (!this.isAvailable(p)) {
         p.labelObj.setVisible(false);
-        // 条件不满足（还没到时候）只是压暗，不是隐藏 —— 让玩家知道"这里以后有用"
         p.marker.setVisible(true);
         if (p.icon) p.icon.setVisible(true);
         p.marker.setAlpha(0.06);
@@ -316,12 +334,12 @@ export default class InteractPointSystem {
     }
 
     // 可交互的点做呼吸效果
+    //   ★ 走到这里的一定是「已接受且前置条件满足」的点 ——
+    //     没接委托的（②）和已完成的（①）在上面就 continue 掉了，不参与呼吸。
     this.points.forEach((p) => {
-      if (this.isQuestDone(p)) return;   // 已完成的点不参与呼吸
-      // ★ 没接委托的采集点：点亮但压暗（用 isQuestAccepted，不是 isAvailable）
-      //   这样它仍然可以被选中、按 E 会给出「请先去找 XX 接委托」的解释，
-      //   而不是像 requires 不满足那样直接变成一块没法按的暗斑。
-      const avail = this.isAvailable(p) && this.isQuestAccepted(p);
+      if (this.isQuestDone(p)) return;         // 已完成的点不参与呼吸
+      if (!this.isQuestAccepted(p)) return;    // 还没接委托的点已经整块隐藏
+      const avail = this.isAvailable(p);
       p.marker.setAlpha(avail ? (p === this.active ? 0.3 : 0.14) : 0.05);
     });
 

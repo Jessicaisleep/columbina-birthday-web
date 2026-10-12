@@ -2,8 +2,8 @@
  * 信纸过场系统（写邀请函）
  *
  * 一段过场的完整节奏：
- *   1. 书桌前按 E  →  背景暗下来，信纸浮上来
- *   2. 正文逐行显示（一行一行打出来，读得慢的可以按 E 跳过当前行）
+ *   1. 书桌前按 F  →  背景暗下来，信纸浮上来
+ *   2. 正文逐行显示（一行一行打出来，读得慢的可以按 F 跳过当前行）
  *   3. 落款出现
  *   4. 信纸折起来 → 收进信封 → 封口 → 信封飞走
  *   5. onDone() 回调  →  VenueScene 把这一封记进 StorySystem
@@ -18,6 +18,12 @@
  * DOM 在 venue.html（#letter-root），样式也在那里。
  */
 
+// 11 封信的 id —— 直接问 StorySystem 要，别再手写一份
+//   （手写的那份迟早会和新加的信对不上，见 readme 里记过的同类坑）
+import { GUESTS } from './StorySystem.js';
+
+const LETTER_IDS = GUESTS.map((g) => g.id);
+
 /**
  * 逐行显示的速度（2026-10-04 用户反馈「文字逐行跳出的速度太快」，整体放慢一倍）
  *
@@ -25,7 +31,7 @@
  *   LINE_MS_MIN / MAX    单字耗时的上下限（防止 3 个字的短句磨蹭 1 秒）
  *   LINE_GAP_MS          一段打完 → 下一段开始之间的停顿（留出阅读时间）
  *   LINE_GAP_EMPTY_MS    空行（段落分隔）的停顿
- *   LINE_GAP_AFTER_SKIP  玩家按 E 跳字补全后的停顿
+ *   LINE_GAP_AFTER_SKIP  玩家按 F 跳字补全后的停顿
  *
  * 想再调快/调慢，只改这几个数就够。
  */
@@ -41,6 +47,7 @@ export default class LetterSystem {
     this.root = document.getElementById('letter-root');
     this.stage = document.getElementById('letter-stage');
     this.paper = document.getElementById('letter-paper');
+    this.doodleEl = document.getElementById('letter-doodle');
     this.recipientEl = document.getElementById('letter-recipient');
     this.bodyEl = document.getElementById('letter-body');
     this.signEl = document.getElementById('letter-sign');
@@ -61,15 +68,56 @@ export default class LetterSystem {
     this.onDone = null;
 
     this.bindEvents();
+    this._warmDoodles();
+  }
+
+  // -------------------------------------------------------------------------
+  /**
+   * 预热信纸抬头涂鸦
+   *
+   * 11 张涂鸦一共几百 KB，场景创建时让浏览器先把它们抓进缓存，
+   * 玩家真正写信时图片是秒出的，不会出现「信纸已经浮上来了、抬头还是空的」。
+   * 用过的 Image 对象挂在 this._warm 上，避免被 GC 掉导致请求中止。
+   */
+  _warmDoodles() {
+    this._warm = LETTER_IDS.map((id) => {
+      const im = new Image();
+      im.src = `assets/letters/${id}.png`;
+      return im;
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  /**
+   * 换掉信纸抬头的涂鸦
+   *
+   * ★ 用户 m13727 任务1：每封信的纸上要画对应收信人的 Q 版简笔画/涂鸦。
+   *   贴图按「信 id」命名（assets/letters/letter-<谁>.png），
+   *   而 StorySystem.GUESTS 每一项本来就有 id —— 直接拿来做文件名，不用再映射一次。
+   *
+   * ★ 图片没画好 / 404 时要把这一行整个撤掉（而不是留一个破图标占位），
+   *   否则信纸正文会被无谓地顶下去一段。见 venue.html 的 #letter-doodle:empty。
+   */
+  _setDoodle(letterId) {
+    if (!this.doodleEl) return;
+    this.doodleEl.innerHTML = '';
+    if (!letterId) return;
+
+    const img = document.createElement('img');
+    img.alt = '';
+    img.draggable = false;
+    img.addEventListener('error', () => { this.doodleEl.innerHTML = ''; });
+    img.src = `assets/letters/${letterId}.png`;
+    this.doodleEl.appendChild(img);
   }
 
   // -------------------------------------------------------------------------
   bindEvents() {
-    // 点击信纸任意处 / 按 E → 推进
+    // 点击信纸任意处 / 按 F → 推进（F = 场景互动键，2026-10-12 由 E 改 F）
     this.root.addEventListener('click', () => this.advance());
     window.addEventListener('keydown', (e) => {
       if (!this.isOpen()) return;
-      if (e.key === 'e' || e.key === 'E' || e.key === ' ' || e.key === 'Enter') {
+      if (e.key === 'f' || e.key === 'F' || e.key === ' ' || e.key === 'Enter') {
         e.preventDefault();
         this.advance();
       } else if (e.key === 'Escape') {
@@ -100,6 +148,8 @@ export default class LetterSystem {
 
     this.recipientEl.textContent = guest.to || '';
     this.signEl.textContent = guest.sign || '';
+    // 抬头涂鸦跟着这封信换（信 id 就是贴图名）
+    this._setDoodle(guest.id);
     this.signEl.classList.remove('show');
     this.countEl.textContent = opts.total
       ? `第 ${(opts.index || 0) + 1} / ${opts.total} 封`
@@ -119,7 +169,7 @@ export default class LetterSystem {
     this.paper.classList.remove('fold', 'in');
     this.envelopeEl.classList.remove('show', 'open', 'fly');
     this.sealEl.classList.remove('show');
-    this.hintEl.textContent = '按 E / 点击 继续';
+    this.hintEl.textContent = '按 F / 点击 继续';
 
     this.root.classList.add('active');
     window.__venuePaused = true;
@@ -167,7 +217,7 @@ export default class LetterSystem {
     const speed = Math.max(LINE_MS_MIN, Math.min(LINE_MS_MAX, Math.round(LINE_MS_TOTAL / text.length)));
     let i = 0;
     this._typing = true;
-    this.hintEl.textContent = '按 E / 点击 继续';
+    this.hintEl.textContent = '按 F / 点击 继续';
 
     this._timer = setInterval(() => {
       i += 1;
@@ -191,7 +241,7 @@ export default class LetterSystem {
 
   /** 推进：正在打字 → 补全；否则立刻显示下一行 */
   advance() {
-    // 刚打开的那一下（按 E 开信纸的那次按键会冒泡过来）不响应
+    // 刚打开的那一下（按 F 开信纸的那次按键会冒泡过来）不响应
     if (Date.now() - this._openedAt < 260) return;
     if (this._sealing) return;
 

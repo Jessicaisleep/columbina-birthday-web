@@ -434,9 +434,13 @@ export const SCENES = [
     name: '青水浅滩',
     bg: 'assets/scenes/shallows.png',
     // 2026-10-06 用户给了 v2 标注（shallows角色出生位置2.png）：落点从 (17,8) 挪到 (20,9)
+    // 2026-10-12 v3（shallows角色出生位置3.png）：上方红框仍是 (19..20, 8..9)，落点不变；
+    //   下方红框挪到 (16..17, 22..23)，所以从星船草甸进浅滩的到达点同步改成右下角 (17,23)。
     spawn: { tileX: 20, tileY: 9 },
     exits: [
-      { to: 'starship', tileX: 20, tileY: 22, w: 3, h: 2, toTileX: 21, toTileY: 21 },
+      // ★ toTileX/toTileY 是「从星船草甸走回来时落在浅滩哪里」——
+      //   就是用户 v3 图里下方那个红框的右下角格。
+      { to: 'starship', tileX: 20, tileY: 22, w: 3, h: 2, toTileX: 17, toTileY: 23 },
       // 2026-10-06 v2（shallows传送点位置2.png）：用户涂的是 (17,6)，y6 整行是墙，往下挪到 y7；
       // 落点同步改用 v2 的出生位置 (20,9)
       { to: 'pond', tileX: 17, tileY: 7, w: 2, h: 2, toTileX: 20, toTileY: 9 },

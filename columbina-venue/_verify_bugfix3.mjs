@@ -120,6 +120,10 @@ try {
   // 走到 ip-pond-fish 旁边（pond 14,11）
   await page.evaluate(() => {
     const s = window.__venueScene;
+    // ★ 任务2（2026-10-12）之后必须先确认这条委托是「没接」的状态，
+    //   否则前面的小节可能已经把它接过，点位会一直亮着。
+    s.quests.data.states['q-ainuo-fish'] = 'available';
+    s.quests.save();
     s.player.setPosition(14 * 64 + 32, 11 * 64 + 32);
   });
   await sleep(700);
@@ -127,22 +131,27 @@ try {
   const nearInfo = await page.evaluate(() => {
     const s = window.__venueScene;
     const p = s.interactPoints.active;
+    const pt = s.interactPoints.points.find((x) => x.id === 'ip-pond-fish');
     return {
       scene: s.scenes.current.id,
       hasActive: !!p,
       id: p && p.id,
-      label: p && p.labelText,
+      markerVisible: pt ? pt.marker.visible : null,
+      iconVisible: pt && pt.icon ? pt.icon.visible : null,
       questId: p && p.questId,
-      accepted: p ? s.interactPoints.isQuestAccepted(p) : null,
+      state: s.quests.getStateById('q-ainuo-fish'),
     };
   });
-  check('pond 里站到了捉鱼交互点上', nearInfo.id === 'ip-pond-fish',
+  check('任务2：没接委托时捉鱼点整个不存在（光圈/图标都不画，active 也为空）',
+    nearInfo.hasActive === false && nearInfo.markerVisible === false,
     JSON.stringify(nearInfo));
 
   const noQuest = await page.evaluate(() => {
     const s = window.__venueScene;
-    s.triggerPoint(s.interactPoints.active);
+    const toastBefore = s.toastText.text;
+    s.triggerPoint(null);
     return {
+      toastBefore,
       toast: s.toastText.text,
       hasFish: s.hasItem('fish'),
       counter: s.quests.getCounter('q-ainuo-fish'),
@@ -151,19 +160,20 @@ try {
   });
   check('没接委托按 E：不给鱼', noQuest.hasFish === false);
   check('没接委托按 E：计数仍是 0', noQuest.counter === 0);
-  check('没接委托按 E：提示里点名委托人「爱诺」', noQuest.toast.includes('爱诺'),
-    `toast="${noQuest.toast}"`);
-  check('没接委托按 E：提示委托名「池塘捉鱼」', noQuest.toast.includes('池塘捉鱼'),
-    `toast="${noQuest.toast}"`);
+  check('没接委托按 E：没有任何新提示（点位压根不存在，不是弹「谁要什么」）',
+    noQuest.toast === noQuest.toastBefore, `toast="${noQuest.toast}"`);
 
   // ---- 接委托之后再按 E，应该正常拿到 ----
   const afterAccept = await page.evaluate(() => {
     const s = window.__venueScene;
     s.quests.data.states['q-ainuo-fish'] = 'active';
     s.quests.save();
+    // ★ 用点位对象本身问，不要用 interactPoints.active ——
+    //   它要下一帧才刷新，而且 isQuestAccepted(null) 会返回 true（掩盖问题）。
+    const pt = s.interactPoints.points.find((x) => x.id === 'ip-pond-fish');
     return {
       state: s.quests.getStateById('q-ainuo-fish'),
-      accepted: s.interactPoints.isQuestAccepted(s.interactPoints.active),
+      accepted: s.interactPoints.isQuestAccepted(pt),
     };
   });
   check('接取委托后 isQuestAccepted 变 true', afterAccept.accepted === true,
@@ -193,6 +203,10 @@ try {
     s.giveItem('fish', '鱼');
     s.quests.data.counters['q-ainuo-fish'] = 0;
     s.quests.data.states['q-ainuo-fish'] = 'active';
+    // ★ 2026-10-12：真正的「老存档」里根本没有 takenPoints 这个键
+    //   （它是本轮为「多点位共用 collectId」新加的）。上面那一节已经在这同一个
+    //   点位上按过一次 E，点位被登记成"已采"，不清掉就重现不了旧存档。
+    s.quests.data.takenPoints = {};
     s.quests.save();
 
     const before = {
@@ -272,8 +286,9 @@ try {
   check('在会场点「前往」：提示中转第一站（传送光圈）',
     other.toast.includes('传送光圈'), `toast="${other.toast}"`);
 
-  // 现场 2b：跨大半个环 —— 从池塘去会场，经由哪个中转都行，只要报出终点名字
-  // 现场 2b：跨大半个环 —— 从池塘去会场（交付 NPC 在会场）
+  // 现场 2b：跨大半个环 —— 从池塘去交付 NPC 所在地
+  // ★ 2026-10-12：NPC 散布改动之后，爱诺不在会场、而在「星船草甸」，
+  //   所以这里的期望值从 venue/林间空地 改成 starship/星船草甸。
   await page.evaluate(() => {
     const s = window.__venueScene;
     s.quests.data.counters['q-ainuo-fish'] = 1;
@@ -288,11 +303,11 @@ try {
     s.handleGotoQuest('q-ainuo-fish');
     return { sceneId: t && t.sceneId, via: t && t.viaSceneId, toast: s.toastText.text };
   });
-  check('池塘 → 会场（不直连）：getGuideTarget 仍能算出目标地图=venue',
-    farToast.sceneId === 'venue', JSON.stringify(farToast));
-  check('池塘 → 会场：提示含「林间空地」', farToast.toast.includes('林间空地'),
+  check('池塘 → 星船草甸（不直连）：getGuideTarget 仍能算出目标地图=starship',
+    farToast.sceneId === 'starship', JSON.stringify(farToast));
+  check('池塘 → 星船草甸：提示含「星船草甸」', farToast.toast.includes('星船草甸'),
     `toast="${farToast.toast}"`);
-  check('池塘 → 会场：提示含中转第一站及中转场景名',
+  check('池塘 → 星船草甸：提示含中转第一站及中转场景名',
     !!farToast.via && farToast.toast.includes('先走传送光圈去'),
     `toast="${farToast.toast}"`);
 
@@ -335,18 +350,28 @@ try {
     const s = window.__venueScene;
     // ★ 2026-10-07：会场多了「空 + 派蒙」（伙伴，没有 guest 标记，进场就在），
     //   所以这里按【客人名字】逐个核对，而不是拿 s.npcs.length 硬比 13。
+    // ★ 2026-10-12：NPC 散布到 10 张地图之后，客人**不再都站在会场**，
+    //   所以「会场里有几位」要按各自的 scene 算；「总共到了几位客人」
+    //   改问 story.arrivedGuests()（11 封信覆盖 13 位 NPC）。
     const NPCS = (await import('/src/config.js')).NPCS;
     const guestNames = NPCS.filter((n) => n.guest).map((n) => n.name);
+    const hereNames = NPCS.filter((n) => n.guest && n.scene === s.scenes.current.id).map((n) => n.name);
     const present = guestNames.filter((nm) => s.npcs.some((n) => n.name === nm));
     return {
       npcs: s.npcs.length,
       guestsPresent: present.length,
       guestsTotal: guestNames.length,
+      expectHere: hereNames.length,
+      arrivedTotal: s.story.arrivedGuests().length,
       scene: s.scenes.current.id,
       interactive: s.npcs.filter((n) => n.body && n.body.input).length,
     };
   });
-  check('主线推到底：13 位客人到场', npcCount.guestsPresent === 13 && npcCount.guestsTotal === 13,
+  check('主线推到底：13 位客人全部到场（散在各张地图）',
+    npcCount.arrivedTotal === 13 && npcCount.guestsTotal === 13,
+    JSON.stringify({ ...regression, ...npcCount }));
+  check(`主线推到底：${npcCount.scene} 地图上该在场的客人都在（${npcCount.expectHere} 位）`,
+    npcCount.guestsPresent === npcCount.expectHere,
     JSON.stringify({ ...regression, ...npcCount }));
   check('场景里全部 NPC 都不再可点击', npcCount.interactive === 0,
     `可点击 ${npcCount.interactive} 位（场景里共 ${npcCount.npcs} 位）`);

@@ -100,13 +100,18 @@ const r = await p.evaluate(async () => {
   s.player.y = pt.y + 40;
   steps.nearWater = await waitActive('ip-pond-water');
 
-  // ---- A. 没接委托：不给东西，提示去找奈芙尔 ----
+  // ---- A. 没接委托：点位整个不存在，按 E 也不给东西 ----
   resetQuest('available');
   const beforeA = snap();
+  // ★ 任务2（2026-10-12）：没接委托时这个点位整个不存在（连暗斑都没有）
+  await new Promise((res) => setTimeout(res, 400));
+  steps.A = { before: beforeA };
+  steps.A.markerVisible = pt.marker.visible;
+  steps.A.near = await waitActive('ip-pond-water', 600);
   s.triggerPoint(pt);
   await new Promise((res) => setTimeout(res, 300));
   const afterA = snap();
-  steps.A = { before: beforeA, after: afterA };
+  steps.A.after = afterA;
   steps.A.stillAvailable = afterA.state === 'available' && !afterA.items['water-full'];
 
   // ---- B. 正常流程：接委托 → 拿空桶 → 打水 ----
@@ -117,6 +122,9 @@ const r = await p.evaluate(async () => {
   steps.B.gotBucket = !!afterAccept.items['bucket-empty'];
   steps.B.stateActive = afterAccept.state === 'active';
 
+  // ★ 任务2 之后必须多等一帧：接完委托点位才出现，
+  //   而 handleProximity() 要下一帧才把它写进 interactPoints.active。
+  steps.B.nearAfterAccept = await waitActive('ip-pond-water');
   s.triggerPoint(pt);
   await new Promise((res) => setTimeout(res, 300));
   const afterB = snap();
@@ -166,11 +174,16 @@ const r = await p.evaluate(async () => {
   steps.dialogLinks = lines.filter((l) => l.link).map((l) => l.link.label);
   steps.hasDeliverLink = steps.dialogLinks.includes('交付委托');
 
-  // ---- F. 五个委托的「跨天重置」死锁逐个验一遍 ----
-  //    打水走 doExchangeItem，其余四个走 doCollectItem ——
-  //    两条路都得能自愈，否则换一个委托又会卡住。
+  // ---- F. 采集类委托的「跨天重置」死锁逐个验一遍 ----
+  //    打水走 doExchangeItem，其余走 doCollectItem —— 两条路都得能自愈。
+  //
+  //    ★ 2026-10-12 更新：文案总表落地后委托从 5 条变 14 条，其中
+  //      · talk（q-arlecchino-check）由 markTalked 完成，没有采集点；
+  //      · visit（q-traveler-far）由 handleQuestVisit 完成，点位不给 collectId；
+  //      · 多条委托 count > 1（虹彩蔷薇 ×3 / 月灵灯 ×3 / 小物件 ×5）。
+  //      所以这里只验 collect 类，且按各自 need 判断「按一次 E 之后」的期望值。
   const { INTERACT_POINTS } = await import('/src/quests.js');
-  const side = QUESTS.filter((x) => x.giverNpcId);
+  const side = QUESTS.filter((x) => x.giverNpcId && x.target && x.target.type === 'collect');
   steps.F = [];
   for (const q of side) {
     const ip = INTERACT_POINTS.find((x) => x.questId === q.id);
@@ -185,13 +198,15 @@ const r = await p.evaluate(async () => {
     // 跨天：任务重置、物品保留
     s.quests.data.states[q.id] = 'active';
     s.quests.data.counters[q.id] = 0;
+    if (s.quests.data.takenPoints) s.quests.data.takenPoints = {};
     s.quests.save();
     s.clearItems();
 
     const itemId = ip.collectId || (q.target && q.target.itemId);
     s.giveItem(itemId, '测试道具');
 
-    const b4 = { state: s.quests.getState(q), counter: s.quests.getCounter(q.id) };
+    const need = q.target.count || 1;
+    const b4 = { state: s.quests.getState(q), counter: s.quests.getCounter(q.id), need };
     s.player.x = pt2.x;
     s.player.y = pt2.y + 40;
     const near = await waitActive(ip.id);
@@ -199,16 +214,12 @@ const r = await p.evaluate(async () => {
     await new Promise((res) => setTimeout(res, 350));
     const af = { state: s.quests.getState(q), counter: s.quests.getCounter(q.id) };
 
+    // 按一次 E 之后：计数必须补上 1 点；只有 need=1 的才该直接 ready
+    const wantState = need === 1 ? 'ready' : 'active';
     steps.F.push({
-      id: q.id,
-      ip: ip.id,
-      scene: ip.scene,
-      action: ip.action,
-      itemId,
-      near,
-      before: b4,
-      after: af,
-      ok: near && af.counter >= 1 && af.state === 'ready',
+      id: q.id, ip: ip.id, scene: ip.scene, action: ip.action, itemId, need, near,
+      before: b4, after: af,
+      ok: near && af.counter === 1 && af.state === wantState,
     });
   }
 
@@ -224,7 +235,9 @@ if (r.missing) {
   console.log('\n===== A. 没接委托 =====');
   console.log(`   before  state=${s.A.before.state} items=${JSON.stringify(s.A.before.items)}`);
   console.log(`   after   state=${s.A.after.state} items=${JSON.stringify(s.A.after.items)}`);
-  ok(s.A.stillAvailable, '没接委托时按 E 不产出「装满水的桶」，委托保持 available（弹提示让玩家去找奈芙尔）');
+  ok(s.A.stillAvailable, '没接委托时按 E 不产出「装满水的桶」，委托保持 available');
+  ok(s.A.markerVisible === false && s.A.near === false,
+    '任务2：没接委托时取水点的光圈整块不存在（看不到、也认不出脚下有点位）');
 
   console.log('\n===== B. 正常流程：接委托 → 打水 =====');
   console.log(`   接委托后  state=${s.B.afterAccept.state} counter=${s.B.afterAccept.counter} items=${JSON.stringify(s.B.afterAccept.items)}`);
@@ -251,11 +264,11 @@ if (r.missing) {
   console.log(`   对话里的功能入口: ${JSON.stringify(s.dialogLinks)}`);
   ok(s.hasDeliverLink, '委托 ready 时，奈芙尔对话里出现「交付委托」按钮');
 
-  console.log('\n===== F. 五个委托的「跨天重置」自愈 =====');
+  console.log('\n===== F. 采集类委托的「跨天重置」自愈 =====');
   for (const f of s.F) {
     if (f.why) { ok(false, `${f.id} —— ${f.why}`); continue; }
-    console.log(`   ${f.id.padEnd(22)} ${f.scene.padEnd(8)} ${String(f.action).padEnd(12)} ${f.before.state}/${f.before.counter} → ${f.after.state}/${f.after.counter}`);
-    ok(f.ok, `${f.id}：物品还在但计数为 0 时，按 E 补计数并转 ready`);
+    console.log(`   ${f.id.padEnd(22)} ${f.scene.padEnd(8)} ${String(f.action).padEnd(12)} need=${f.need} ${f.before.state}/${f.before.counter} → ${f.after.state}/${f.after.counter}`);
+    ok(f.ok, `${f.id}（need=${f.need}）：物品还在但计数为 0 时，按 E 补计数${f.need === 1 ? '并转 ready' : '（未集满仍 active）'}`);
   }
 }
 

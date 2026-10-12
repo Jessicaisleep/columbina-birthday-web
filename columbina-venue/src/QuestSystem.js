@@ -49,6 +49,10 @@ export default class QuestSystem {
     this.data = this.load();
     if (!this.data.states) this.data.states = {};
     if (!this.data.counters) this.data.counters = {};
+    // 点位级采集登记（见 isPointTaken）：同一条委托的多个交互点共用 collectId 时，
+    // 靠它区分「这个点已经采过了」和「另一个点还没采」。
+    // 老存档没有这个字段，所以必须在这里兜底，不能只在 load() 的默认返回里写。
+    if (!this.data.takenPoints) this.data.takenPoints = {};
   }
 
   load() {
@@ -181,9 +185,35 @@ export default class QuestSystem {
     if (changed) this.checkCompletion();
   }
 
+  // ---- 点位级采集登记 -------------------------------------------------------
+  //
+  // ★ 为什么需要它（2026-10-12 修的一个真 bug）：
+  //   一条委托可以有【多个交互点共用同一个 collectId】——
+  //   伊涅芙的清扫委托是会场里 5 处小物件、芙宁娜的灯是 3 处灯座、
+  //   林尼的虹彩蔷薇是 3 朵。它们都靠 markCollect(collectId) 累加计数器。
+  //
+  //   但 VenueScene.doCollectItem() 的去重门槛是「身上有这个道具 && 计数 >= 1」，
+  //   捡到第 1 个之后，第 2 个点会被这句直接挡回去 —— 5 个点只能捡到 1 个。
+  //
+  //   所以去重要按【点位】而不是按【道具】做：这里登记已经采过的交互点 id，
+  //   doCollectItem 进门先查这里。
+
+  /** 这个交互点是不是已经采过了 */
+  isPointTaken(pointId) {
+    if (!pointId) return false;
+    return !!this.data.takenPoints[pointId];
+  }
+
+  /** 登记：这个交互点已经采过了 */
+  markPointTaken(pointId) {
+    if (!pointId) return;
+    if (this.data.takenPoints[pointId]) return;
+    this.data.takenPoints[pointId] = 1;
+    this.save();
+  }
+
   /** 记录：收集物品 */
-  markCollect(itemId, n = 1) {
-    let changed = false;
+  markCollect(itemId, n = 1) {    let changed = false;
 
     for (const q of QUESTS) {
       if (this.getState(q) !== 'active') continue;
@@ -226,7 +256,7 @@ export default class QuestSystem {
     //
     // ★ 「writeLetters」类型的进度 = 已写好的信 / 总数
     //
-    //   2026-10-04 写信环节回来了（书桌前按 E → 信纸逐行展开 → 收归信封），
+    //   2026-10-04 写信环节回来了（书桌前按 F → 信纸逐行展开 → 收归信封），
     //   任务目标就是「把 11 封 invitation 写完」，所以这里必须看 writtenCount。
     //   （2026-09-28 ~ 2026-10-04 之间那版去掉写信环节的流程看的是 carriedCount，
     //     现在改回来了；改错会让任务开局就 100% 自己完成。）
@@ -388,7 +418,7 @@ export default class QuestSystem {
   }
 
   reset() {
-    this.data = { date: todayKey(), states: {}, counters: {} };
+    this.data = { date: todayKey(), states: {}, counters: {}, takenPoints: {} };
     this.save();
     if (this.onChange) this.onChange(this, null, 'reset');
   }

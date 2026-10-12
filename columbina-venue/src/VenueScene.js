@@ -117,7 +117,7 @@ export default class VenueScene extends Phaser.Scene {
     });
 
     // 切蛋糕的全屏插画（所有人围坐 + 哥伦比娅切蛋糕）
-    //   同样必须提前排队：玩家在主位按 E 那一刻再 load 是来不及解码的。
+    //   同样必须提前排队：玩家在主位按 F 那一刻再 load 是来不及解码的。
     if (!this.textures.exists(CAKE_ART.tex)) {
       this.load.image(CAKE_ART.tex, CAKE_ART.tex);
     }
@@ -244,7 +244,10 @@ export default class VenueScene extends Phaser.Scene {
     this.keyA = this.input.keyboard.addKey('A');
     this.keyS = this.input.keyboard.addKey('S');
     this.keyD = this.input.keyboard.addKey('D');
-    this.keyE = this.input.keyboard.addKey('E');
+    // 互动键：F（2026-10-12 用户要求由 E 改为 F）。
+    // ★ 字段名不再叫 keyE：名字必须跟着实际按键走，否则以后读代码的人会以为要按旧键。
+    //   F1/F2 走的是 keydown-F1 / keydown-F2 独立事件，与这个 Key 对象互不干扰。
+    this.keyInteract = this.input.keyboard.addKey('F');
     this.keyQ = this.input.keyboard.addKey('Q');
     this.keyM = this.input.keyboard.addKey('M');
     // F1：切换可走区显示（调试用）
@@ -254,7 +257,7 @@ export default class VenueScene extends Phaser.Scene {
 
     // ---- 系统 ----
     this.dialog = new DialogSystem();
-    // 信纸过场（写邀请函）：书桌前按 E → 信纸逐行展开 → 收归信封
+    // 信纸过场（写邀请函）：书桌前按 F → 信纸逐行展开 → 收归信封
     this.letter = new LetterSystem();
     // ★ 把 story 传进去：主线进度存在 StorySystem 里（邀请函写了几封 / 投没投递），
     //   QuestSystem 必须能问到它，否则主线永远显示「进行中 0%」。
@@ -637,7 +640,7 @@ export default class VenueScene extends Phaser.Scene {
       // ★ 切蛋糕那个交互点带 requires:'partyTime' + hideWhenUnavailable，
       //   宴会没开的时候根本不会建。这里必须重建一次 ——
       //   否则玩家恰好在会场里完成最后一个委托时，人已经站到主位了，
-      //   但地上没有光圈、按 E 也没反应，得退出会场再进来才出现。
+      //   但地上没有光圈、按 F 也没反应，得退出会场再进来才出现。
       this.interactPoints.rebuild(this.scenes.current.id);
       // ★ 相机取景：围桌这一坨（桌子+坐姿）在世界 y 384~1024，中心约 y=704；
       //   而主位在 y≈608。相机若以主角为正中（视野高 1029），可见范围是 94~1123，
@@ -957,7 +960,7 @@ export default class VenueScene extends Phaser.Scene {
       //   问题：鼠标点哪都能开对话，**不检查距离** ——
       //   哥伦比娅站在地图另一头，点一下远处的 NPC 也能聊，
       //   把「走到他身边」这个动作整个绕过去了。
-      //   现在只剩「走近 → 头顶冒 E 提示 → 按 E」这一条路。
+      //   现在只剩「走近 → 头顶冒 E 提示 → 按 F」这一条路。
       //   （已核对：没有任何验收脚本靠点击 NPC，删掉不会破坏 _verify_*。）
 
       const isSprite = info.mode === 'sprite';
@@ -1080,7 +1083,7 @@ export default class VenueScene extends Phaser.Scene {
     //   （见 StorySystem.writeLetter），所以中途不需要再回书桌"收起来"。
     //     步骤1：还没写满 11 封 → 去书桌
     //     步骤2：11 封都写好了、还没投递 → 去信箱
-    //   之前这里判的是 onDeskCount / carriedCount，是"信先堆桌上、再按 E 收"
+    //   之前这里判的是 onDeskCount / carriedCount，是"信先堆桌上、再按 F 收"
     //   那版流程的残留：onDesk 现在恒为 0（第 1 步成了死代码，而且引用的
     //   ip-letters 早已不存在），carriedCount 又会在第 1 封就 > 0，会把玩家
     //   在第 1 封之后就引去信箱 —— 和用户反馈的"投递卡死"是同一类误导。
@@ -1305,7 +1308,7 @@ export default class VenueScene extends Phaser.Scene {
   buildUI() {
     const font = 'system-ui, "Microsoft YaHei", sans-serif';
 
-    this.add.text(16, 14, 'WASD 移动   E 交互 / 对话   Q 任务   M 地图', {
+    this.add.text(16, 14, 'WASD 移动   F 交互 / 对话   Q 任务   M 地图', {
       fontFamily: font, fontSize: '15px', color: '#e8eef8',
       backgroundColor: '#00000088', padding: { x: 10, y: 6 },
     }).setScrollFactor(0).setDepth(9000);
@@ -1683,7 +1686,7 @@ export default class VenueScene extends Phaser.Scene {
     // 站姿 NPC +（放开之后）围坐 NPC，一起参与「谁离我最近」
     //
     // ★ 为什么围坐 NPC 要挂在 handleProximity 里而不是另起一套：
-    //   两者共用同一条「走近 -> 头顶光圈 -> 按 E」的交互路径，
+    //   两者共用同一条「走近 -> 头顶光圈 -> 按 F」的交互路径，
     //   分开写会出现「两套图标互相不知道对方」的经典 bug。
     const candidates = this.partyTalk
       ? this.npcs.concat(this.seatedNpcs)
@@ -1709,7 +1712,7 @@ export default class VenueScene extends Phaser.Scene {
 
     // --- 显示提示（NPC 优先）---
     if (nearest) {
-      this.npcTip.setText(`${nearest.iconText} ${nearest.name}\n按 E 对话`).setVisible(true);
+      this.npcTip.setText(`${nearest.iconText} ${nearest.name}\n按 F 对话`).setVisible(true);
       this.activePoint = null;
     } else if (pointActive) {
       // ★ 这里必须用求值后的 getter，不能用原始字段：
@@ -1720,7 +1723,7 @@ export default class VenueScene extends Phaser.Scene {
       //     直接拼进模板字符串会把函数源码原样打到屏幕上
       //     （用户 2026-10-04 截图里的 `(s) => (s.allWritten ? '桌上的邀请函' : ...)`）。
       this.npcTip
-        .setText(`${pointActive.iconText || '◆'} ${pointActive.labelText}\n${pointActive.hintText || '按 E 互动'}`)
+        .setText(`${pointActive.iconText || '◆'} ${pointActive.labelText}\n${pointActive.hintText || '按 F 互动'}`)
         .setVisible(true);
       this.activePoint = pointActive;
     } else {
@@ -1730,10 +1733,10 @@ export default class VenueScene extends Phaser.Scene {
   }
 
   handleInteract() {
-    // 全屏插画展示中：E 不接（收起只能点鼠标）
+    // 全屏插画展示中：F 不接（收起只能点鼠标）
     if (this.overlay) return;
 
-    if (!Phaser.Input.Keyboard.JustDown(this.keyE)) {
+    if (!Phaser.Input.Keyboard.JustDown(this.keyInteract)) {
       if (Phaser.Input.Keyboard.JustDown(this.keyQ)) this.toggleQuestPanel();
       return;
     }
@@ -1829,7 +1832,7 @@ export default class VenueScene extends Phaser.Scene {
     //   背包 localStorage['venue-items-v1'] —— 【没有按天分桶】；
     //   任务状态 localStorage['venue-quests-v2'] —— 【按天分桶，跨天自动重置】。
     //   于是跨天之后：玩家身上还揣着「装满水的桶」，但委托被重置回
-    //   active / 计数 0。再到池塘取水处按 E，旧写法第一句
+    //   active / 计数 0。再到池塘取水处按 F，旧写法第一句
     //       if (p.doneItem && this.hasItem(p.doneItem)) { toast(doneHint); return; }
     //   就提前 return 了 —— 界面提示「桶已经装满了，赶紧送回去吧」，
     //   可 markCollect() 从来没被调用，计数永远是 0，委托永远到不了 ready，
@@ -2091,7 +2094,7 @@ export default class VenueScene extends Phaser.Scene {
 
 
   /**
-   * 采集交互：按 E 拿到任务物品
+   * 采集交互：按 F 拿到任务物品
    *
    * 交互点里配：
    *   action: 'collectItem'
@@ -2109,11 +2112,28 @@ export default class VenueScene extends Phaser.Scene {
     //   旧写法直接 `已经拿到了 → return`，于是计数器永远补不上，
     //   委托永远差 1 个 —— 用户 2026-10-05 报的就是这个。
     //   现在：身上有道具但任务计数还是 0 时，不再重复发道具，但**把计数补上**。
+    //
+    // ★ 2026-10-12 修第二个 bug：同一条委托可以有多个点位共用同一个 collectId
+    //   （伊涅芙 5 处小物件 / 芙宁娜 3 处灯座 / 林尼 3 朵虹彩蔷薇）。
+    //   旧写法去重是「身上有这个道具 && 计数 >= 1」，捡到第 1 个之后
+    //   第 2 个点就被挡回去了 —— 5 个点只能捡到 1 个，委托做不完。
+    //   现在分成两道：
+    //     ① 点位级 —— 这个交互点本身采过没有（QuestSystem.isPointTaken）
+    //     ② 道具级 —— 需要的数量凑齐没有（counted >= need）
     const qid = p.questId;
+    const q = qid ? QUESTS.find((x) => x.id === qid) : null;
+    const need = (q && q.target && q.target.count) || 1;
     const counted = qid ? this.quests.getCounter(qid) : 1;
     const alreadyHas = this.hasItem(p.collectId) && !p.repeatable;
 
-    if (alreadyHas && counted >= 1) {
+    // ① 这个点位已经采过了（换场景再回来也不会重复刷）
+    if (qid && this.quests.isPointTaken(p.id)) {
+      this.toast(p.doneHint || '已经拿到了');
+      return;
+    }
+
+    // ② 需要的数量已经凑齐了
+    if (alreadyHas && counted >= need) {
       this.toast(p.doneHint || '已经拿到了');
       return;
     }
@@ -2124,6 +2144,11 @@ export default class VenueScene extends Phaser.Scene {
       }
       this.quests.markCollect(p.collectId, 1);
     }
+    // 登记这个点位已经采过 —— 必须在 markCollect 之后，
+    // 否则中途抛错会留下「点没了、东西也没给」的状态。
+    // 只登记真正产出道具的点（个别点只是「站一会儿」，没有 collectId，
+    // 那种点允许反复按，不该被登记成已采集）
+    if (qid && p.collectId) this.quests.markPointTaken(p.id);
     if (p.okText) {
       this.dialog.open(
         { name: p.label || '采集', portrait: '✋', portraitBg: '#2a3a2e' },
@@ -2254,13 +2279,31 @@ export default class VenueScene extends Phaser.Scene {
     });
   }
 
+  /**
+   * 把一条委托的 offerLine / progressLine / deliverLine 推进对话队列
+   *
+   * 这三个字段是《文案总表》第二部分建议的**可选**字段：
+   * 填了就让这位 NPC 用自己的语气把话说出口，不填就沿用通用模板 ——
+   * 所以 5 条老委托和 9 条新委托都兼容，以后加委托也可以不填。
+   *
+   * 支持 string（一句话）和 string[]（一串独白）两种写法：
+   *   林尼的接取台词是 4 句连着说的，挤成一行就变成一段没有人称的说明书。
+   */
+  pushQuestLines(lines, value) {
+    if (!value) return;
+    const arr = Array.isArray(value) ? value : [value];
+    for (const t of arr) {
+      if (t) lines.push({ text: t });
+    }
+  }
+
   buildDialogLines(npc) {
     // ★ 围坐形态走另一套话（用户 m09394）
     //
     //   站姿 NPC 在会场里说的是「委托接没接、交没交」，
     //   围坐 NPC 说的是「今晚的感受 + 想对哥伦比娅说的话」，
     //   再接上两个功能入口：查看合影 / 小游戏·单品（占位）。
-    //   两套话共用同一个对话框和同一条「走近 -> 按 E」路径。
+    //   两套话共用同一个对话框和同一条「走近 -> 按 F」路径。
     if (npc.seated) return this.buildSeatedDialogLines(npc);
 
     const lines = [...(npc.dialog || [])];
@@ -2275,14 +2318,25 @@ export default class VenueScene extends Phaser.Scene {
 
       // 可接取
       if (isGiver && state === 'available') {
+        // ★ offerLine：NPC 自己先开口（文案总表第二部分建议的可选字段）
+        //
+        //   为什么要有它：
+        //     通用模板「对了，有件事想请你帮忙。」是第三人称的旁白腔，
+        //     谁来发任务都是同一句 —— 人设全丢了。
+        //     offerLine 是这位 NPC 用自己的语气把这件事说出口。
+        //   有 offerLine 时去掉那句旁白式的开场白（NPC 已经说过了），
+        //   只留「委托卡」本身：标题 + 描述 + 奖励 + 接取按钮。
+        this.pushQuestLines(lines, q.offerLine);
         lines.push({
-          text: `对了，有件事想请你帮忙。\n【${q.title}】\n${q.desc}\n完成后给你：${q.reward}`,
+          text: `${q.offerLine ? '' : '对了，有件事想请你帮忙。\n'}`
+              + `【${q.title}】\n${q.desc}\n完成后给你：${q.reward}`,
           link: { label: '接下委托', action: 'accept', questId: q.id },
         });
       }
 
       // 进行中
       if (isGiver && state === 'active') {
+        this.pushQuestLines(lines, q.progressLine);
         lines.push({
           text: `【${q.title}】还在进行中\n${this.questHint(q)}`,
         });
@@ -2290,6 +2344,7 @@ export default class VenueScene extends Phaser.Scene {
 
       // 可交付
       if (isDeliver && state === 'ready') {
+        this.pushQuestLines(lines, q.deliverLine);
         lines.push({
           text: `【${q.title}】\n你办好了！这是答应给你的谢礼：${q.reward}`,
           link: { label: '交付委托', action: 'deliver', questId: q.id },
@@ -2448,7 +2503,7 @@ export default class VenueScene extends Phaser.Scene {
           : `目标在「${mapName}」—— 从这张地图的传送光圈过去`);
       }
     } else if (act) {
-      this.toast(`${act}就在这张地图上（「${mapName}」）—— 走到发光的地方按 E`);
+      this.toast(`${act}就在这张地图上（「${mapName}」）—— 走到发光的地方按 F`);
     } else {
       this.toast(`目标在「${mapName}」—— 就在眼前这张地图上，找找发光的地方`);
     }
@@ -2496,7 +2551,13 @@ export default class VenueScene extends Phaser.Scene {
 
       if (dx <= r && dy <= r) {
         // 到达目标点
-        this.quests.markVisit(q.id);
+        //
+        // ★ 2026-10-12 修的 bug：这里原来传的是 q.id，
+        //   而 QuestSystem.markVisit(tileX, tileY) 收的是**格子坐标** ——
+        //   传进去一个字符串，里面两句 Math.abs(q.target.tileX - 'q-xxx') 全是 NaN，
+        //   判断恒不成立，计数器永远不动 → visit 型委托永远卡在 active。
+        //   格子坐标上面两行（tx / ty）就已经算好了，直接传。
+        this.quests.markVisit(tx, ty);
         this.gainToast(t.needLabel || '任务物品');
         return;
       }
