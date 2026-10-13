@@ -40,6 +40,8 @@ import {
 } from './celebration.js';
 import { CAKE_ART } from './cutscene.js';
 import { partyTalkOf, PHOTO_PROMPT, OFFER_PROMPT } from './party-talk.js';
+import { createLiveBackground, loadWaterFrames } from './LiveBackground.js';
+import SceneVideo from './SceneVideo.js';
 
 /**
  * 全屏插画（切蛋糕 / 合影）的绘制层级
@@ -98,6 +100,9 @@ export default class VenueScene extends Phaser.Scene {
   // ---------------------------------------------------------------------------
   preload() {
     SCENES.forEach((s) => this.load.image(`scene-bg-${s.id}`, s.bg));
+
+    // 动态壁纸用的水面波光帧（只对有水的那几个场景真正排队，见 LiveBackground.js）
+    loadWaterFrames(this);
 
     // 委托道具的贴图
     //
@@ -305,6 +310,10 @@ export default class VenueScene extends Phaser.Scene {
     this.initItemSystem();
     this.initPropSystem();
     this.scenes = new SceneManager(this);
+    // ★ 动态背景视频层：必须早于第一次 scenes.load() 建好并注入，
+    //   否则首个场景（home）加载时还没有 video 层可挂。
+    this.sceneVideo = new SceneVideo(this);
+    this.scenes.video = this.sceneVideo;
     window.addEventListener('venue:scene-changed', (e) => this.onSceneChanged(e.detail));
 
     this.scenes.load(SCENES[0].id, null, true);
@@ -315,6 +324,9 @@ export default class VenueScene extends Phaser.Scene {
     // 做完了就把点位从地图上收掉
     this.interactPoints = new InteractPointSystem(this, this.story, this.quests);
     this.interactPoints.rebuild(this.scenes.current.id);
+
+    // ---- 动态壁纸背景层（样板：只有 shallows 有，其它场景返回空实现）----
+    this.liveBg = createLiveBackground(this, this.scenes.current.id);
 
     this.spawnNpcsForCurrentScene();
 
@@ -477,6 +489,10 @@ export default class VenueScene extends Phaser.Scene {
       //   此刻 scenes.current 才是新场景。
       //   在外面调用时它还是旧场景，会判断错场景、道具摆不出来。
       this.spawnProps(this.scenes.current.id);
+      // 动态壁纸层跟着场景换（A 方案遗留的粒子/装饰层，现在默认只剩装饰+微粒）
+      if (this.liveBg) this.liveBg.destroy();
+      this.liveBg = createLiveBackground(this, this.scenes.current.id);
+      // 动态背景视频层在 SceneManager.load() 里就已经挂好了，不用重复处理
       // 如果开着可走区显示，切场景后要重画
       if (this.walkDebug) { this.walkDebug.destroy(); this.walkDebug = null; this.toggleWalkDebug(); }
       this.physics.add.collider(this.player, this.scenes.getObstacleGroup());
@@ -1525,6 +1541,7 @@ export default class VenueScene extends Phaser.Scene {
 
     this.handleKeyboardMove();
     this.updateShadow();
+    if (this.liveBg) this.liveBg.update(this.time.now, this.game.loop.delta);
     this.handleProximity();
     this.handleInteract();
     this.handleMinimap();

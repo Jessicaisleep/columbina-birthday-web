@@ -36,6 +36,11 @@ export default class SceneManager {
     //   跨场景加载保留 —— load() 里会重新加上。
     this.blockSources = new Map();   // key -> { sceneId, blocks: [[x0,y0,x1,y1],...] }
     this.blockedByScene = new Map(); // sceneId -> 合并后的 [[x0,y0,x1,y1],...]
+    // ★ 动态背景视频层（2026-10-12）
+    //   挂在静态背景图【上面】、传送光圈标记【下面】（depth 0 / 1 / 2）。
+    //   静态图永远不删：视频异步加载、种子模型又会重画纹理，
+    //   加载失败或还没就绪时就自然退回静态图，不穿帮也不留空白。
+    this.video = null;               // SceneVideo 实例，由 VenueScene 注入
   }
 
   /** 取场景配置 */
@@ -126,6 +131,14 @@ export default class SceneManager {
       const bg = scene.add.rectangle(0, 0, SCENE_W, SCENE_H, 0x2a3a2a).setOrigin(0, 0).setDepth(0);
       this.objects.push(bg);
       console.warn(`场景背景图缺失: ${cfg.bg}`);
+    }
+
+    // ---- 动态背景视频层 ----
+    // 放在最后加，是因为它要在静态底图建好之后才能叠上去；
+    // clear() 是在本函数开头调用的，所以上一个场景的视频一定已经收好了。
+    if (this.video) {
+      this.video.unmount();
+      this.video.mount(cfg.id);
     }
 
     // ---- 碰撞 + 出入口 ----

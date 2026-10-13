@@ -392,10 +392,16 @@ export const SCENES = [
     id: 'icefield',
     name: '冰原遗迹',
     bg: 'assets/scenes/icefield.png',
+    // 上面那张标了两个红框，用户只让改「下方出生点」，本体 spawn 仍是 (7,8)。
     spawn: { tileX: 7, tileY: 8 },
     exits: [
       { to: 'venue', tileX: 5, tileY: 5, w: 3, h: 2, toTileX: 7, toTileY: 8 },
-      { to: 'pools', tileX: 27, tileY: 22, w: 3, h: 2, toTileX: 26, toTileY: 21 },
+      // ★★ 从冰原去月面彩池的落点就写在这里，不是写在 pools 那条 to:'icefield' 上
+      //   —— SceneManager.goThrough() 查的是【目标场景里通回本场景的那条出口】
+      //   的 toTileX/toTileY。
+      //   按「icefield角色出生点位2.png」标的下右红框（tile x31-33 / y22-24）
+      //   改成 (32,23)；原值 (26,21) 在新图上已不是落点。
+      { to: 'pools', tileX: 27, tileY: 22, w: 3, h: 2, toTileX: 32, toTileY: 23 },
     ],
   },
   {
